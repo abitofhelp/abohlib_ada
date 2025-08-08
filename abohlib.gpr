@@ -48,7 +48,7 @@ project Abohlib is
       "src/infrastructure/testing/",
       -- Presentation Layer
       "src/presentation/",
-      "src/presentation/adapters/",
+      -- "src/presentation/adapters/", -- Contains only empty subdirectories
       -- "src/presentation/adapters/cli/", -- Empty directory
       -- "src/presentation/adapters/graphql/", -- Empty directory
       -- "src/presentation/adapters/rest/", -- Empty directory
