@@ -13,7 +13,7 @@ project Abohlib is
       "src/core/domain/",
       "src/core/domain/aggregates/",
       "src/core/domain/constants/",
-      "src/core/domain/entities/",
+      -- "src/core/domain/entities/", -- Empty directory
       "src/core/domain/math/",
       "src/core/domain/types/",
       "src/core/domain/errors/",
@@ -32,26 +32,26 @@ project Abohlib is
       -- Core Application Layer
       "src/core/application/",
       "src/core/application/constants/",
-      "src/core/application/dtos/",
+      -- "src/core/application/dtos/", -- Empty directory
       "src/core/application/errors/",
-      "src/core/application/services/",
+      -- "src/core/application/services/", -- Empty directory
       "src/core/application/use_cases/",
       -- Infrastructure Layer
       "src/infrastructure/",
       "src/infrastructure/adapters/",
-      "src/infrastructure/config/",
+      -- "src/infrastructure/config/", -- Empty directory
       "src/infrastructure/constants/",
       "src/infrastructure/errors/",
       "src/infrastructure/logging/",
-      "src/infrastructure/persistence/",
+      -- "src/infrastructure/persistence/", -- Empty directory
       "src/infrastructure/resilience/",
       "src/infrastructure/testing/",
       -- Presentation Layer
       "src/presentation/",
       "src/presentation/adapters/",
-      "src/presentation/adapters/cli/",
-      "src/presentation/adapters/graphql/",
-      "src/presentation/adapters/rest/",
+      -- "src/presentation/adapters/cli/", -- Empty directory
+      -- "src/presentation/adapters/graphql/", -- Empty directory
+      -- "src/presentation/adapters/rest/", -- Empty directory
       "src/presentation/constants/",
       "src/presentation/errors/"
    );
