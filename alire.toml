@@ -9,7 +9,6 @@ website = "https://github.com/abitofhelp/abohlib_ada.git"
 tags = [
     "ada",
     "ada2022",
-    "ada-library",
     "gnat",
     "alire",
     "domain-driven-design",
@@ -22,7 +21,6 @@ tags = [
     "state-machine",
     "type-safety",
     "strong-typing",
-    "ulid",
     "retry-pattern",
     "resilience",
     "testing-framework",
@@ -31,11 +29,8 @@ tags = [
     "aggregate-root",
     "phantom-types",
     "functional-programming",
-    "zero-dependencies",
     "saga-pattern",
     "event-sourcing",
-    "pipeline-pattern",
-    "posix",
     "cross-platform",
 ]
 
