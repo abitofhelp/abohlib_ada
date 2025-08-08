@@ -1,0 +1,60 @@
+--  =============================================================================
+--  Abohlib Tests Project File (No Style Checks - For Coverage Analysis)
+--  Copyright (c) 2025 A Bit of Help, Inc.
+--  SPDX-License-Identifier: MIT
+--  =============================================================================
+--
+--  This project file is specifically for coverage analysis.
+--  It excludes style checks that can interfere with coverage instrumentation.
+--  Use this with: make test-coverage
+--
+--  The coverage analysis requires:
+--    -fprofile-arcs -ftest-coverage (added by Makefile)
+--  =============================================================================
+
+with "config/abohlib_config.gpr";
+with "abohlib.gpr";
+
+project Tests_No_Style is
+
+   for Source_Dirs use ("tests/**");
+   for Object_Dir use "obj/tests-coverage";  -- Separate object dir for coverage
+   for Exec_Dir use "bin";
+   for Main use ("test_all.adb");
+
+   package Compiler is
+      -- Base switches from config
+      for Default_Switches ("Ada") use
+        Abohlib_Config.Ada_Compiler_Switches &
+        (
+         -- Essential switches for tests
+         "-gnat2022",      -- Ada 2022 standard
+         "-gnata",         -- Enable assertions
+         "-gnatVa",        -- All validity checks
+         "-gnatwa",        -- All warnings
+         "-gnateE",        -- Extra exception information
+         "-g",             -- Debug info for coverage
+         
+         -- Exclude all style checks for coverage builds
+         -- Style checks can interfere with coverage instrumentation
+         -- and are already enforced in regular test builds
+         
+         -- Additional switches for better coverage analysis
+         "-O0",            -- No optimization for accurate coverage
+         "-gnatE",         -- Dynamic elaboration checking
+         "-gnateS"         -- Store tracebacks in exceptions
+        );
+   end Compiler;
+   
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es", "-g");  -- Include symbolic traceback
+   end Binder;
+
+   package Builder is
+      for Default_Switches ("Ada") use 
+        ("-j0",           -- Use all available cores
+         "-g",            -- Debug info
+         "-s");           -- Recompile if switches change
+   end Builder;
+
+end Tests_No_Style;

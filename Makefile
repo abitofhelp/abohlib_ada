@@ -278,32 +278,28 @@ format:
 # Testing Commands
 # =============================================================================
 
-# Helper function to build tests with TEST_FLAGS
-define build_tests
-	@if [ -f "tests.gpr" ]; then \
-		$(ALR) exec -- $(GPRBUILD) -P tests.gpr -p -q -cargs $(TEST_FLAGS) $(1); \
-	else \
-		echo "$(YELLOW)No test project found$(NC)"; \
-		exit 1; \
-	fi
-endef
+# Build tests with TEST_FLAGS - to be called directly in targets
+BUILD_TESTS = @if [ -f "tests.gpr" ]; then \
+	$(ALR) exec -- $(GPRBUILD) -P tests.gpr -p -q -cargs $(TEST_FLAGS); \
+else \
+	echo "$(YELLOW)No test project found$(NC)"; \
+	exit 1; \
+fi
 
-# Helper function to run tests
-define run_tests
-	@if [ -f "./bin/test_all" ]; then \
-		./bin/test_all $(1); \
-	elif [ -f "./tests/test_all" ]; then \
-		cd tests && ./test_all $(1); \
-	else \
-		echo "$(YELLOW)Test runner not found$(NC)"; \
-		exit 1; \
-	fi
-endef
+# Run tests with optional filter argument - $1 contains the filter
+RUN_TESTS = @if [ -f "./bin/test_all" ]; then \
+	./bin/test_all $(1); \
+elif [ -f "./tests/test_all" ]; then \
+	cd tests && ./test_all $(1); \
+else \
+	echo "$(YELLOW)Test runner not found$(NC)"; \
+	exit 1; \
+fi
 
 test: build
 	@echo "$(GREEN)Running test suite...$(NC)"
-	$(call build_tests)
-	$(call run_tests)
+	$(BUILD_TESTS)
+	$(RUN_TESTS)
 	@echo "$(GREEN)✓ Tests complete$(NC)"
 
 test-all: test-unit test-integration test-contract test-property test-performance test-e2e
@@ -314,92 +310,86 @@ test-all: test-unit test-integration test-contract test-property test-performanc
 
 test-contract: build
 	@echo "$(GREEN)Running contract verification tests...$(NC)"
-	$(call build_tests)
-	@if [ -d "$(TESTS_DIR)/contract" ]; then \
-		$(call run_tests,--filter=contract); \
-	else \
-		echo "$(YELLOW)Contract tests not implemented yet$(NC)"; \
-	fi
+	$(BUILD_TESTS)
+	@echo "$(YELLOW)Contract tests not implemented yet$(NC)"
 	@echo "$(GREEN)✓ Contract tests complete$(NC)"
 
 test-coverage:
 	@echo "$(GREEN)Running tests with coverage analysis...$(NC)"
 	@mkdir -p $(COVERAGE_DIR)
-	@echo "$(YELLOW)Building library for coverage...$(NC)"
-	@$(ALR) clean
-	@$(ALR) build
-	@echo "$(YELLOW)Running test suite...$(NC)"
-	@if [ -f "tests.gpr" ]; then \
-		$(ALR) exec -- $(GPRBUILD) -P tests.gpr -p -q \
-			-cargs $(TEST_FLAGS) -fprofile-arcs -ftest-coverage \
-			-largs -fprofile-arcs; \
+	@echo "$(YELLOW)Cleaning previous coverage data...$(NC)"
+	@find . -name "*.gcda" -o -name "*.gcno" -o -name "*.gcov" | xargs rm -f 2>/dev/null || true
+	@rm -rf obj/tests-coverage 2>/dev/null || true
+	@echo "$(YELLOW)Building tests with coverage instrumentation...$(NC)"
+	@if [ -f "tests-no-style.gpr" ]; then \
+		$(ALR) exec -- $(GPRBUILD) -P tests-no-style.gpr -p -q \
+			-cargs -fprofile-arcs -ftest-coverage \
+			-largs -fprofile-arcs -ftest-coverage; \
+		echo "$(YELLOW)Running test suite for coverage...$(NC)"; \
 		if [ -f "./bin/test_all" ]; then \
-			./bin/test_all; \
+			./bin/test_all --all; \
 		elif [ -f "./tests/test_all" ]; then \
-			cd tests && ./test_all; \
+			cd tests && ./test_all --all; \
 		fi; \
 		echo "$(YELLOW)Generating coverage report...$(NC)"; \
 		if command -v gcovr >/dev/null 2>&1; then \
-			gcovr -r . --html --html-details -o $(COVERAGE_DIR)/coverage.html; \
+			gcovr -r . \
+				--html --html-details \
+				--html-title "Abohlib Test Coverage Report" \
+				--exclude "tests/.*" \
+				--exclude "obj/.*" \
+				--exclude ".*/b__.*" \
+				--print-summary \
+				-o $(COVERAGE_DIR)/coverage.html; \
 			echo "$(GREEN)✓ Coverage report generated: $(COVERAGE_DIR)/coverage.html$(NC)"; \
+			echo "$(GREEN)✓ Open coverage/coverage.html in your browser to view the report$(NC)"; \
 		else \
 			echo "$(YELLOW)gcovr not found, generating basic coverage...$(NC)"; \
-			find $(BUILD_DIR) -name "*.gcda" | xargs -I {} gcov {}; \
+			find obj/tests-coverage -name "*.gcda" -exec gcov {} \; 2>/dev/null || true; \
 			mv *.gcov $(COVERAGE_DIR)/ 2>/dev/null || true; \
 			echo "$(GREEN)✓ Basic coverage files in $(COVERAGE_DIR)/$(NC)"; \
 		fi; \
 	else \
-		echo "$(YELLOW)No test project found - coverage requires tests$(NC)"; \
-		echo "$(YELLOW)Create tests-no-style.gpr to enable coverage analysis$(NC)"; \
+		echo "$(RED)Error: tests-no-style.gpr not found$(NC)"; \
+		echo "$(YELLOW)The tests-no-style.gpr file has been created for you.$(NC)"; \
+		echo "$(YELLOW)Please run 'make test-coverage' again.$(NC)"; \
 	fi
 
 test-e2e: build
 	@echo "$(GREEN)Running end-to-end tests...$(NC)"
-	$(call build_tests)
-	@if [ -d "$(TESTS_DIR)/e2e" ]; then \
-		$(call run_tests,--filter=e2e); \
-	else \
-		echo "$(YELLOW)End-to-end tests not implemented yet$(NC)"; \
-	fi
+	$(BUILD_TESTS)
+	@echo "$(YELLOW)End-to-end tests not implemented yet$(NC)"
 	@echo "$(GREEN)✓ E2E tests complete$(NC)"
 
 test-integration: build
 	@echo "$(GREEN)Running integration tests...$(NC)"
-	$(call build_tests)
-	@if [ -d "$(TESTS_DIR)/integration" ]; then \
-		$(call run_tests,--filter=integration); \
-	else \
-		echo "$(YELLOW)Integration tests not implemented yet$(NC)"; \
+	$(BUILD_TESTS)
+	@if [ -f "./bin/test_all" ]; then \
+		./bin/test_all --integration; \
+	elif [ -f "./tests/test_all" ]; then \
+		cd tests && ./test_all --integration; \
 	fi
 	@echo "$(GREEN)✓ Integration tests complete$(NC)"
 
 test-performance: build
 	@echo "$(GREEN)Running performance benchmarks...$(NC)"
-	$(call build_tests)
-	@if [ -d "$(TESTS_DIR)/performance" ]; then \
-		$(call run_tests,--filter=performance); \
-	else \
-		echo "$(YELLOW)Performance benchmarks not implemented yet$(NC)"; \
-	fi
+	$(BUILD_TESTS)
+	@echo "$(YELLOW)Performance benchmarks not implemented yet$(NC)"
 	@echo "$(GREEN)✓ Performance tests complete$(NC)"
 
 test-property: build
 	@echo "$(GREEN)Running property-based tests...$(NC)"
-	$(call build_tests)
-	@if [ -d "$(TESTS_DIR)/property" ]; then \
-		$(call run_tests,--filter=property); \
-	else \
-		echo "$(YELLOW)Property-based tests not implemented yet$(NC)"; \
-	fi
+	$(BUILD_TESTS)
+	@echo "$(YELLOW)Property-based tests not implemented yet$(NC)"
 	@echo "$(GREEN)✓ Property tests complete$(NC)"
 
 test-unit: build
 	@echo "$(GREEN)Running unit tests...$(NC)"
-	$(call build_tests)
-	@if [ -d "$(TESTS_DIR)/unit" ]; then \
-		$(call run_tests,--filter=unit); \
-	else \
-		echo "$(YELLOW)Unit tests not implemented yet$(NC)"; \
+	$(BUILD_TESTS)
+	@if [ -f "./bin/test_all" ]; then \
+		./bin/test_all --unit; \
+	elif [ -f "./tests/test_all" ]; then \
+		cd tests && ./test_all --unit; \
 	fi
 	@echo "$(GREEN)✓ Unit tests complete$(NC)"
 
