@@ -1,39 +1,88 @@
 name = "abohlib"
 description = "A Bit of Help Library - Reusable Ada 2022 Components"
 version = "1.0.0"
-
 authors = ["A Bit of Help, Inc. - Michael Gardner"]
 maintainers = ["A Bit of Help, Inc. - Michael Gardner <mjgardner@abitofhelp.com>"]
 maintainers-logins = ["abitofhelp"]
 licenses = "MIT"
 website = "https://github.com/abitofhelp/abohlib_ada.git"
-tags = ["utility", "value-objects", "ada", "library", "reusable", "abohlib"]
-
-[configuration]
-auto_gpr_with = true
+tags = [
+    "ada",
+    "ada2022",
+    "ada-library",
+    "gnat",
+    "alire",
+    "domain-driven-design",
+    "clean-architecture",
+    "hexagonal-architecture",
+    "repository-pattern",
+    "value-objects",
+    "result-pattern",
+    "error-handling",
+    "state-machine",
+    "type-safety",
+    "strong-typing",
+    "ulid",
+    "retry-pattern",
+    "resilience",
+    "testing-framework",
+    "reusable-components",
+    "ddd",
+    "aggregate-root",
+    "phantom-types",
+    "functional-programming",
+    "zero-dependencies",
+    "saga-pattern",
+    "event-sourcing",
+    "pipeline-pattern",
+    "posix",
+    "cross-platform",
+]
 
 [[depends-on]]
 trendy_test = "~0.0.3"
 strategy = "~0.1.0"
 ulid = "^20240921.0.0"
 
-[build-profiles]
-"*" = "development"
-
-[build-switches]
-"*".style_checks = ["-gnatyM120", "-gnatyx", "-gnatye", "-gnatyr", "-gnatyn", "-gnatyu", "-gnatyO"]
-"*".contracts = "yes"
-"*".runtime_checks = "everything"
-
 [[depends-on]]
 sha2 = "^2.0.0"
 
 [[actions]]
 type = "test"
-command = ["alr", "exec", "--", "gprbuild", "-P", "tests.gpr", "-j0"]
+command = [
+    "alr",
+    "exec",
+    "--",
+    "gprbuild",
+    "-P",
+    "tests.gpr",
+    "-j0",
+]
 directory = "."
 
 [[actions]]
 type = "test"
-command = ["./bin/test_all", "--all"]
+command = [
+    "./bin/test_all",
+    "--all",
+]
 directory = "."
+
+[configuration]
+auto_gpr_with = true
+
+[build-profiles]
+"*" = "development"
+
+[build-switches."*"]
+style_checks = [
+    "-gnatyM120",
+    "-gnatyx",
+    "-gnatye",
+    "-gnatyr",
+    "-gnatyn",
+    "-gnatyu",
+    "-gnatyO",
+]
+contracts = "yes"
+runtime_checks = "everything"
