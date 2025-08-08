@@ -62,6 +62,13 @@ NC := \033[0m # No Color
 #   -gnatyS  : Check no statements on same line as THEN or ELSE
 #   -gnatyM120 : Check maximum line length of 120 characters
 
+# Test compilation flags - used for all test builds
+# These flags enable comprehensive runtime checks and style validation for tests
+# You can override these by setting TEST_FLAGS environment variable:
+#   TEST_FLAGS="-gnat2022 -gnata" make test
+# Or modify this variable to change the default flags for your project
+TEST_FLAGS ?= -gnat2022 -gnata -gnatVa -gnatwa -gnaty3 -gnatya -gnatyb -gnatye -gnatyf -gnatyh -gnatyi -gnatyk -gnatyl -gnatyM120 -gnatyn -gnatyp -gnatyr -gnatyt -gnatyu -gnatyx -gnateE
+
 # =============================================================================
 # Help Target (Default)
 # =============================================================================
@@ -271,20 +278,32 @@ format:
 # Testing Commands
 # =============================================================================
 
-test: build
-	@echo "$(GREEN)Running test suite...$(NC)"
+# Helper function to build tests with TEST_FLAGS
+define build_tests
 	@if [ -f "tests.gpr" ]; then \
-		$(ALR) exec -- $(GPRBUILD) -P tests.gpr -p -q; \
-		if [ -f "./bin/test_all" ]; then \
-			./bin/test_all; \
-		elif [ -f "./tests/test_all" ]; then \
-			cd tests && ./test_all; \
-		else \
-			echo "$(YELLOW)Test runner not found$(NC)"; \
-		fi; \
+		$(ALR) exec -- $(GPRBUILD) -P tests.gpr -p -q -cargs $(TEST_FLAGS) $(1); \
 	else \
 		echo "$(YELLOW)No test project found$(NC)"; \
+		exit 1; \
 	fi
+endef
+
+# Helper function to run tests
+define run_tests
+	@if [ -f "./bin/test_all" ]; then \
+		./bin/test_all $(1); \
+	elif [ -f "./tests/test_all" ]; then \
+		cd tests && ./test_all $(1); \
+	else \
+		echo "$(YELLOW)Test runner not found$(NC)"; \
+		exit 1; \
+	fi
+endef
+
+test: build
+	@echo "$(GREEN)Running test suite...$(NC)"
+	$(call build_tests)
+	$(call run_tests)
 	@echo "$(GREEN)✓ Tests complete$(NC)"
 
 test-all: test-unit test-integration test-contract test-property test-performance test-e2e
@@ -295,8 +314,9 @@ test-all: test-unit test-integration test-contract test-property test-performanc
 
 test-contract: build
 	@echo "$(GREEN)Running contract verification tests...$(NC)"
+	$(call build_tests)
 	@if [ -d "$(TESTS_DIR)/contract" ]; then \
-		make test ARGS="--filter=contract"; \
+		$(call run_tests,--filter=contract); \
 	else \
 		echo "$(YELLOW)Contract tests not implemented yet$(NC)"; \
 	fi
@@ -311,7 +331,7 @@ test-coverage:
 	@echo "$(YELLOW)Running test suite...$(NC)"
 	@if [ -f "tests.gpr" ]; then \
 		$(ALR) exec -- $(GPRBUILD) -P tests.gpr -p -q \
-			-cargs -fprofile-arcs -ftest-coverage \
+			-cargs $(TEST_FLAGS) -fprofile-arcs -ftest-coverage \
 			-largs -fprofile-arcs; \
 		if [ -f "./bin/test_all" ]; then \
 			./bin/test_all; \
@@ -335,8 +355,9 @@ test-coverage:
 
 test-e2e: build
 	@echo "$(GREEN)Running end-to-end tests...$(NC)"
+	$(call build_tests)
 	@if [ -d "$(TESTS_DIR)/e2e" ]; then \
-		make test ARGS="--filter=e2e"; \
+		$(call run_tests,--filter=e2e); \
 	else \
 		echo "$(YELLOW)End-to-end tests not implemented yet$(NC)"; \
 	fi
@@ -344,8 +365,9 @@ test-e2e: build
 
 test-integration: build
 	@echo "$(GREEN)Running integration tests...$(NC)"
+	$(call build_tests)
 	@if [ -d "$(TESTS_DIR)/integration" ]; then \
-		make test ARGS="--filter=integration"; \
+		$(call run_tests,--filter=integration); \
 	else \
 		echo "$(YELLOW)Integration tests not implemented yet$(NC)"; \
 	fi
@@ -353,8 +375,9 @@ test-integration: build
 
 test-performance: build
 	@echo "$(GREEN)Running performance benchmarks...$(NC)"
+	$(call build_tests)
 	@if [ -d "$(TESTS_DIR)/performance" ]; then \
-		make test ARGS="--filter=performance"; \
+		$(call run_tests,--filter=performance); \
 	else \
 		echo "$(YELLOW)Performance benchmarks not implemented yet$(NC)"; \
 	fi
@@ -362,8 +385,9 @@ test-performance: build
 
 test-property: build
 	@echo "$(GREEN)Running property-based tests...$(NC)"
+	$(call build_tests)
 	@if [ -d "$(TESTS_DIR)/property" ]; then \
-		make test ARGS="--filter=property"; \
+		$(call run_tests,--filter=property); \
 	else \
 		echo "$(YELLOW)Property-based tests not implemented yet$(NC)"; \
 	fi
@@ -371,8 +395,9 @@ test-property: build
 
 test-unit: build
 	@echo "$(GREEN)Running unit tests...$(NC)"
+	$(call build_tests)
 	@if [ -d "$(TESTS_DIR)/unit" ]; then \
-		make test ARGS="--filter=unit"; \
+		$(call run_tests,--filter=unit); \
 	else \
 		echo "$(YELLOW)Unit tests not implemented yet$(NC)"; \
 	fi
