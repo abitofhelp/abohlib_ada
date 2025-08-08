@@ -1,0 +1,349 @@
+--   =============================================================================
+--   Test_Concurrent_Circuit_Breaker - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+--  with Ada.Task_Identification;
+with Ada.Real_Time;
+with Ada.Calendar;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Infrastructure.Resilience.Generic_Retry_Handler;
+with Abohlib.Core.Domain.Types.Counts;
+with Abohlib.Core.Domain.Types.Time;
+with Abohlib.Core.Domain.Types.Resilience;
+
+package body Test_Concurrent_Circuit_Breaker is
+
+   use Ada.Real_Time;
+   use Abohlib.Core.Domain.Types.Counts;
+   use Abohlib.Core.Domain.Types.Time;
+   use Abohlib.Core.Domain.Types.Resilience;
+
+--   Test parameters
+   Num_Tasks : constant := 10;
+   Iterations_Per_Task : constant := 1000;
+
+--   Instantiate retry handler for testing
+   function Test_Operation return Boolean is (True);
+   function Is_Success (Result : Boolean) return Boolean is (Result);
+   function Get_Error_Message (Result : Boolean) return String is ("");
+
+   package Test_Retry_Handler is new
+     Abohlib.Infrastructure.Resilience.Generic_Retry_Handler
+       (Result_Type => Boolean,
+        Execute => Test_Operation,
+        Is_Success => Is_Success,
+        Get_Error_Message => Get_Error_Message);
+
+   use Test_Retry_Handler;
+
+--   ==========================================================================
+--   Test Concurrent Circuit Updates
+--   ==========================================================================
+
+   function Test_Concurrent_Circuit_Updates return Void_Result.Result is
+      Config : constant Retry_Config :=
+        (Max_Attempts => Retry_Count_Type (3),
+         Initial_Delay_Ms => Retry_Delay_Ms_Type (100),
+         Max_Delay_Ms => Retry_Delay_Ms_Type (5000),
+         Backoff_Strategy => Exponential_Backoff,
+         Jitter_Mode => Equal_Jitter,
+         Backoff_Multiplier => 2.0,
+         Timeout_Ms => Timeout_Ms_Type (0),
+         Circuit_Breaker_Enabled => True,
+         Failure_Threshold => Circuit_Failure_Threshold_Type (5),
+         Success_Threshold => Circuit_Success_Threshold_Type (3),
+         Half_Open_Delay_Ms => Circuit_Delay_Ms_Type (1000));
+
+      Success_Count : Natural := 0 with Atomic;
+      Failure_Count : Natural := 0 with Atomic;
+
+      task type Worker_Task (ID : Natural);
+      task body Worker_Task is
+         CB_State : Circuit_State;
+         CB_Event : Retry_Event;
+      begin
+         for I in 1 .. Iterations_Per_Task loop
+--   Alternate between success and failure
+            if I mod 2 = 0 then
+               Global_Circuit.Record_Success (Config, CB_State, CB_Event);
+               Success_Count := Success_Count + 1;
+            else
+               Global_Circuit.Record_Failure (Config, CB_State, CB_Event);
+               Failure_Count := Failure_Count + 1;
+            end if;
+         end loop;
+      end Worker_Task;
+
+      type Worker_Array is array (1 .. Num_Tasks) of access Worker_Task;
+      Workers : Worker_Array;
+
+   begin
+--   Reset circuit breaker
+      Global_Circuit.Reset;
+
+--   Start concurrent tasks
+      for I in Workers'Range loop
+         Workers (I) := new Worker_Task (I);
+      end loop;
+
+--   Wait for all tasks to complete
+      for I in Workers'Range loop
+         loop
+            exit when Workers (I)'Terminated;
+            delay 0.01;
+         end loop;
+      end loop;
+
+--   Verify counts
+      declare
+         Expected_Success : constant Natural := (Iterations_Per_Task / 2) * Num_Tasks;
+         Expected_Failure : constant Natural := (Iterations_Per_Task / 2) * Num_Tasks;
+         Actual_Success : constant Natural := Natural (Global_Circuit.Get_Success_Count);
+         Actual_Failure : constant Natural := Natural (Global_Circuit.Get_Failure_Count);
+      begin
+         return Assert_Equal
+           (Expected_Success + Expected_Failure,
+            Actual_Success + Actual_Failure,
+            "Total count mismatch - lost updates detected");
+      end;
+   end Test_Concurrent_Circuit_Updates;
+
+--   ==========================================================================
+--   Test State Transitions Under Load
+--   ==========================================================================
+
+   function Test_State_Transitions_Under_Load return Void_Result.Result is
+      Config : constant Retry_Config :=
+        (Max_Attempts => Retry_Count_Type (3),
+         Initial_Delay_Ms => Retry_Delay_Ms_Type (100),
+         Max_Delay_Ms => Retry_Delay_Ms_Type (5000),
+         Backoff_Strategy => Exponential_Backoff,
+         Jitter_Mode => Equal_Jitter,
+         Backoff_Multiplier => 2.0,
+         Timeout_Ms => Timeout_Ms_Type (0),
+         Circuit_Breaker_Enabled => True,
+         Failure_Threshold => Circuit_Failure_Threshold_Type (5),
+         Success_Threshold => Circuit_Success_Threshold_Type (3),
+         Half_Open_Delay_Ms => Circuit_Delay_Ms_Type (1000));
+
+      Opened_Count : Natural := 0 with Atomic;
+      Closed_Count : Natural := 0 with Atomic;
+
+      task type Failure_Task;
+      task body Failure_Task is
+         CB_State : Circuit_State;
+         CB_Event : Retry_Event;
+      begin
+--   Generate failures to trigger state transition
+         for I in 1 .. 10 loop
+            Global_Circuit.Record_Failure (Config, CB_State, CB_Event);
+            if CB_Event.Event_Type = Circuit_Opened then
+               Opened_Count := Opened_Count + 1;
+            end if;
+         end loop;
+      end Failure_Task;
+
+      type Task_Array is array (1 .. 5) of Failure_Task;
+      Tasks : Task_Array;
+      pragma Unreferenced (Tasks);
+
+   begin
+--   Reset circuit breaker
+      Global_Circuit.Reset;
+
+--   Wait for tasks to complete
+      delay 0.1;
+
+--   Verify only one transition occurred
+      return Assert_Equal
+        (1, Opened_Count,
+         "Multiple tasks opened circuit - race condition detected");
+   end Test_State_Transitions_Under_Load;
+
+--   ==========================================================================
+--   Test Event Handler Thread Safety
+--   ==========================================================================
+
+   function Test_Event_Handler_Thread_Safety return Void_Result.Result is
+      Event_Count : Natural := 0 with Atomic;
+
+      procedure Test_Handler (Event : Retry_Event) is
+      begin
+         Event_Count := Event_Count + 1;
+      end Test_Handler;
+
+      task Event_Generator;
+      task Handler_Setter;
+
+      task body Event_Generator is
+         Event : constant Retry_Event :=
+           (Event_Type => Attempt_Started,
+            Attempt => 1,
+            Delay_Ms => 0,
+            Error_Msg => <>,
+            Timestamp => Ada.Calendar.Clock);
+      begin
+         for I in 1 .. 100 loop
+            Fire_Event (Event);
+            delay 0.001;
+         end loop;
+      end Event_Generator;
+
+      task body Handler_Setter is
+      begin
+         for I in 1 .. 10 loop
+            Set_Event_Handler (Test_Handler'Access);
+            delay 0.01;
+            Set_Event_Handler (null);
+            delay 0.01;
+         end loop;
+      end Handler_Setter;
+
+   begin
+--   Wait for tasks
+      delay 0.3;
+
+--   Verify no crashes occurred and some events were handled
+      return Assert_True
+        (Event_Count > 0,
+         "Event handler thread safety test completed");
+   end Test_Event_Handler_Thread_Safety;
+
+--   ==========================================================================
+--   Test Protected Operation Contracts
+--   ==========================================================================
+
+   function Test_Protected_Operation_Contracts return Void_Result.Result is
+      Config : constant Retry_Config :=
+        (Max_Attempts => Retry_Count_Type (3),
+         Initial_Delay_Ms => Retry_Delay_Ms_Type (100),
+         Max_Delay_Ms => Retry_Delay_Ms_Type (5000),
+         Backoff_Strategy => Exponential_Backoff,
+         Jitter_Mode => Equal_Jitter,
+         Backoff_Multiplier => 2.0,
+         Timeout_Ms => Timeout_Ms_Type (0),
+         Circuit_Breaker_Enabled => True,
+         Failure_Threshold => Circuit_Failure_Threshold_Type (5),
+         Success_Threshold => Circuit_Success_Threshold_Type (3),
+         Half_Open_Delay_Ms => Circuit_Delay_Ms_Type (1000));
+
+      CB_State : Circuit_State;
+      CB_Event : Retry_Event;
+      Initial_Count : Natural;
+   begin
+--   Reset circuit
+      Global_Circuit.Reset;
+
+--   Test postcondition: Success count increases
+      Initial_Count := Natural (Global_Circuit.Get_Success_Count);
+      Global_Circuit.Record_Success (Config, CB_State, CB_Event);
+
+      declare
+         Result : constant Void_Result.Result :=
+           Assert_True
+             (Natural (Global_Circuit.Get_Success_Count) > Initial_Count,
+              "Success count did not increase");
+      begin
+         if not Void_Result.Is_Ok (Result) then
+            return Result;
+         end if;
+      end;
+
+--   Test postcondition: Failure count increases
+      Initial_Count := Natural (Global_Circuit.Get_Failure_Count);
+      Global_Circuit.Record_Failure (Config, CB_State, CB_Event);
+
+      return Assert_True
+        (Natural (Global_Circuit.Get_Failure_Count) > Initial_Count,
+         "Failure count did not increase");
+   end Test_Protected_Operation_Contracts;
+
+--   ==========================================================================
+--   Test Protected Object Performance
+--   ==========================================================================
+
+   function Test_Protected_Object_Performance return Void_Result.Result is
+      Config : constant Retry_Config :=
+        (Max_Attempts => Retry_Count_Type (3),
+         Initial_Delay_Ms => Retry_Delay_Ms_Type (100),
+         Max_Delay_Ms => Retry_Delay_Ms_Type (5000),
+         Backoff_Strategy => Exponential_Backoff,
+         Jitter_Mode => Equal_Jitter,
+         Backoff_Multiplier => 2.0,
+         Timeout_Ms => Timeout_Ms_Type (0),
+         Circuit_Breaker_Enabled => True,
+         Failure_Threshold => Circuit_Failure_Threshold_Type (5),
+         Success_Threshold => Circuit_Success_Threshold_Type (3),
+         Half_Open_Delay_Ms => Circuit_Delay_Ms_Type (1000));
+
+      Start_Time : Time;
+      End_Time : Time;
+      Operations : constant := 10_000;
+      CB_State : Circuit_State;
+      CB_Event : Retry_Event;
+   begin
+--   Measure time for many operations
+      Start_Time := Clock;
+
+      for I in 1 .. Operations loop
+         if I mod 2 = 0 then
+            Global_Circuit.Record_Success (Config, CB_State, CB_Event);
+         else
+            Global_Circuit.Record_Failure (Config, CB_State, CB_Event);
+         end if;
+      end loop;
+
+      End_Time := Clock;
+
+      declare
+         Duration_Sec : constant Duration := To_Duration (End_Time - Start_Time);
+         Ops_Per_Sec : constant Natural := Natural (Float (Operations) / Float (Duration_Sec));
+      begin
+--   Expect at least 100K operations per second
+         return Assert_Greater_Than
+           (100_000, Ops_Per_Sec,
+            "Protected operations too slow: " & Ops_Per_Sec'Image & " ops/sec");
+      end;
+   end Test_Protected_Object_Performance;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Framework : Test_Framework_Service := Create (Output);
+
+      Test_Results : constant array (Positive range <>) of Test_Result_Pkg.Result :=
+        (Framework.Run_Test ("Concurrent Circuit Updates", Test_Concurrent_Circuit_Updates'Access),
+         Framework.Run_Test ("State Transitions Under Load", Test_State_Transitions_Under_Load'Access),
+         Framework.Run_Test ("Event Handler Thread Safety", Test_Event_Handler_Thread_Safety'Access),
+         Framework.Run_Test ("Protected Operation Contracts", Test_Protected_Operation_Contracts'Access),
+         Framework.Run_Test ("Protected Object Performance", Test_Protected_Object_Performance'Access));
+
+      Results : Test_Results_Array (Test_Results'Range);
+   begin
+--   Convert results and print
+      for I in Test_Results'Range loop
+         if Test_Result_Pkg.Is_Ok (Test_Results (I)) then
+            Results (I) := Test_Result_Pkg.Get_Ok (Test_Results (I));
+            Print_Test_Result (Results (I), Output);
+         else
+--   This shouldn't happen with the test framework
+            Output.Write_Error ("Test framework error for test " & I'Image);
+         end if;
+      end loop;
+
+      return Framework.Run_Suite ("Concurrent Circuit Breaker Tests", Results);
+   end Run_All_Tests;
+
+end Test_Concurrent_Circuit_Breaker;
+
+pragma Warnings (On, "subprogram body has no previous spec");

@@ -1,0 +1,538 @@
+--   =============================================================================
+--   Test_Optional - Unit tests for Optional type
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Abohlib.Core.Domain.Value_Objects.Optional;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+
+package body Test_Optional is
+
+--   Test with Integer type
+   package Integer_Optional is new
+     Abohlib.Core.Domain.Value_Objects.Optional
+       (Value_Type    => Integer,
+        Default_Value => 0);
+   use Integer_Optional;
+
+--   Test with String type
+   subtype Test_String is String (1 .. 10);
+   Default_String : constant Test_String := (others => ' ');
+
+   package String_Optional is new
+     Abohlib.Core.Domain.Value_Objects.Optional
+       (Value_Type    => Test_String,
+        Default_Value => Default_String);
+
+--   Test with record type
+   type Test_Record is record
+      Id    : Natural;
+      Value : Float;
+   end record;
+
+   Default_Record : constant Test_Record := (Id => 0, Value => 0.0);
+
+   package Record_Optional is new
+     Abohlib.Core.Domain.Value_Objects.Optional
+       (Value_Type    => Test_Record,
+        Default_Value => Default_Record);
+
+   use Abohlib.Infrastructure.Testing.Test_Framework;
+
+   function Test_Make_Some_Constructor return Void_Result.Result is
+   begin
+--   Test with integer
+      declare
+         Opt : constant Optional_Type := Make_Some (42);
+      begin
+         if not Is_Present (Opt) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Make_Some should create optional with value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Make_Some_Constructor")
+            ));
+         elsif Get (Opt) /= 42 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Make_Some should store the correct value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Make_Some_Constructor")
+            ));
+         elsif Is_Empty (Opt) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Is_Empty should return False for Some"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Make_Some_Constructor")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Make_Some_Constructor;
+
+   function Test_None_Constructor return Void_Result.Result is
+   begin
+      declare
+         Opt : constant Optional_Type := None;
+      begin
+         if Is_Present (Opt) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("None should create optional without value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_None_Constructor")
+            ));
+         elsif not Is_Empty (Opt) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Is_Empty should return True for None"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_None_Constructor")
+            ));
+         elsif Get_Or_Default (Opt) /= 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("None should have default value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_None_Constructor")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_None_Constructor;
+
+   function Test_Get_Operations return Void_Result.Result is
+   begin
+      declare
+         Some_Opt : constant Optional_Type := Make_Some (100);
+         None_Opt : constant Optional_Type := None;
+      begin
+--   Test Get on Some
+         if Get (Some_Opt) /= 100 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get should return the stored value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Operations")
+            ));
+
+--   Test Get_Or_Default
+         elsif Get_Or_Default (Some_Opt) /= 100 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Or_Default should return value for Some"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Operations")
+            ));
+         elsif Get_Or_Default (None_Opt) /= 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Or_Default should return default for None"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Operations")
+            ));
+
+--   Test Get_Or_Else
+         elsif Get_Or_Else (Some_Opt, 999) /= 100 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Or_Else should return value for Some"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Operations")
+            ));
+         elsif Get_Or_Else (None_Opt, 999) /= 999 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Or_Else should return provided default for None"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Operations")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Get_Operations;
+
+   function Test_Equality_Operator return Void_Result.Result is
+   begin
+      declare
+         Opt1 : constant Optional_Type := Make_Some (42);
+         Opt2 : constant Optional_Type := Make_Some (42);
+         Opt3 : constant Optional_Type := Make_Some (99);
+         None1 : constant Optional_Type := None;
+         None2 : constant Optional_Type := None;
+      begin
+--   Test equality of Some with same value
+         if Opt1 /= Opt2 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Optional with same values should be equal"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Equality_Operator")
+            ));
+
+--   Test inequality of Some with different values
+         elsif Opt1 = Opt3 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Optional with different values should not be equal"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Equality_Operator")
+            ));
+
+--   Test equality of None values
+         elsif None1 /= None2 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("None values should be equal"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Equality_Operator")
+            ));
+
+--   Test inequality of Some and None
+         elsif Opt1 = None1 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Some and None should not be equal"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Equality_Operator")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Equality_Operator;
+
+   function Test_Map_Function return Void_Result.Result is
+
+      function Double (X : Integer) return Integer is (X * 2);
+
+      function Map_Double is new Map (Double);
+   begin
+      declare
+         Some_Opt : constant Optional_Type := Make_Some (21);
+         None_Opt : constant Optional_Type := None;
+
+         Mapped_Some : constant Optional_Type := Map_Double (Some_Opt);
+         Mapped_None : constant Optional_Type := Map_Double (None_Opt);
+      begin
+--   Test Map on Some
+         if not Is_Present (Mapped_Some) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Map on Some should produce Some"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Map_Function")
+            ));
+         elsif Get (Mapped_Some) /= 42 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Map should apply function to value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Map_Function")
+            ));
+
+--   Test Map on None
+         elsif Is_Present (Mapped_None) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Map on None should produce None"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Map_Function")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Map_Function;
+
+   function Test_Filter_Function return Void_Result.Result is
+
+      function Is_Even (X : Integer) return Boolean is (X mod 2 = 0);
+
+      function Filter_Even is new Filter (Is_Even);
+   begin
+      declare
+         Even_Opt : constant Optional_Type := Make_Some (42);
+         Odd_Opt : constant Optional_Type := Make_Some (43);
+         None_Opt : constant Optional_Type := None;
+
+         Filtered_Even : constant Optional_Type := Filter_Even (Even_Opt);
+         Filtered_Odd : constant Optional_Type := Filter_Even (Odd_Opt);
+         Filtered_None : constant Optional_Type := Filter_Even (None_Opt);
+      begin
+--   Test Filter on matching value
+         if not Is_Present (Filtered_Even) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Filter should keep matching values"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Filter_Function")
+            ));
+         elsif Get (Filtered_Even) /= 42 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Filter should preserve the value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Filter_Function")
+            ));
+
+--   Test Filter on non-matching value
+         elsif Is_Present (Filtered_Odd) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Filter should remove non-matching values"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Filter_Function")
+            ));
+
+--   Test Filter on None
+         elsif Is_Present (Filtered_None) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Filter on None should produce None"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Filter_Function")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Filter_Function;
+
+   function Test_String_Optional return Void_Result.Result is
+   begin
+      declare
+         Hello : constant Test_String := "Hello     ";
+         Some_Str : constant String_Optional.Optional_Type :=
+           String_Optional.Make_Some (Hello);
+         None_Str : constant String_Optional.Optional_Type :=
+           String_Optional.None;
+      begin
+         if not String_Optional.Is_Present (Some_Str) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String optional should have value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_String_Optional")
+            ));
+         elsif String_Optional.Get (Some_Str) /= Hello then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String optional should store correct value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_String_Optional")
+            ));
+         elsif String_Optional.Is_Present (None_Str) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String None should not have value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_String_Optional")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_String_Optional;
+
+   function Test_Record_Optional return Void_Result.Result is
+   begin
+      declare
+         Rec : constant Test_Record := (Id => 123, Value => 3.14);
+         Some_Rec : constant Record_Optional.Optional_Type :=
+           Record_Optional.Make_Some (Rec);
+         None_Rec : constant Record_Optional.Optional_Type :=
+           Record_Optional.None;
+      begin
+         if not Record_Optional.Is_Present (Some_Rec) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Record optional should have value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Record_Optional")
+            ));
+         elsif Record_Optional.Get (Some_Rec).Id /= 123 or
+               Record_Optional.Get (Some_Rec).Value /= 3.14
+         then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Record optional should store correct value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Record_Optional")
+            ));
+         elsif Record_Optional.Is_Present (None_Rec) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Record None should not have value"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Record_Optional")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Record_Optional;
+
+   function Test_Chained_Operations return Void_Result.Result is
+
+      function Triple (X : Integer) return Integer is (X * 3);
+      function Is_Greater_Than_100 (X : Integer) return Boolean is (X > 100);
+
+      function Map_Triple is new Map (Triple);
+      function Filter_Large is new Filter (Is_Greater_Than_100);
+   begin
+      declare
+--   Start with 40, triple to 120, filter keeps it
+         Opt1 : Optional_Type := Make_Some (40);
+--   Start with 30, triple to 90, filter removes it
+         Opt2 : Optional_Type := Make_Some (30);
+--   Start with None
+         Opt3 : Optional_Type := None;
+      begin
+--   Chain Map then Filter
+         Opt1 := Map_Triple (Opt1);
+         Opt1 := Filter_Large (Opt1);
+
+         Opt2 := Map_Triple (Opt2);
+         Opt2 := Filter_Large (Opt2);
+
+         Opt3 := Map_Triple (Opt3);
+         Opt3 := Filter_Large (Opt3);
+
+         if not Is_Present (Opt1) or else Get (Opt1) /= 120 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Chain should preserve large values"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Chained_Operations")
+            ));
+         elsif Is_Present (Opt2) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Chain should filter out small values"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Chained_Operations")
+            ));
+         elsif Is_Present (Opt3) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Chain on None should remain None"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Chained_Operations")
+            ));
+         else
+            return Void_Result.Ok (True);
+         end if;
+      end;
+   end Test_Chained_Operations;
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class)
+      return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 9);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Test_Func : Test_Function_Access)
+      is
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test (Name, Test_Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+--  Handle test execution error
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => 0.0,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => To_Unbounded_String ("TEST-" & Name)
+               );
+               Print_Test_Result (Tests (Index), Output);
+               Index := Index + 1;
+            end;
+         end if;
+      end Add_Test_Result;
+   begin
+      Output.Write_Line ("=== Running Optional Type Unit Tests ===");
+      Output.Write_Line ("");
+
+      Add_Test_Result ("Test_Make_Some_Constructor", Test_Make_Some_Constructor'Access);
+      Add_Test_Result ("Test_None_Constructor", Test_None_Constructor'Access);
+      Add_Test_Result ("Test_Get_Operations", Test_Get_Operations'Access);
+      Add_Test_Result ("Test_Equality_Operator", Test_Equality_Operator'Access);
+      Add_Test_Result ("Test_Map_Function", Test_Map_Function'Access);
+      Add_Test_Result ("Test_Filter_Function", Test_Filter_Function'Access);
+      Add_Test_Result ("Test_String_Optional", Test_String_Optional'Access);
+      Add_Test_Result ("Test_Record_Optional", Test_Record_Optional'Access);
+      Add_Test_Result ("Test_Chained_Operations", Test_Chained_Operations'Access);
+
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Optional_Type_Tests", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Optional Type Unit Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Optional;
+
+pragma Warnings (On, "subprogram body has no previous spec");

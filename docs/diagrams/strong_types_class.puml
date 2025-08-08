@@ -1,0 +1,143 @@
+@startuml Strong_Types_Class
+!theme aws-orange
+title Strong Types System\nDomain-Specific Type Safety
+
+!define TYPE_COLOR #E8F4F8
+!define SUBTYPE_COLOR #FFF2E8
+!define CONSTANT_COLOR #F0F8E8
+
+package "Time Types" <<TYPE_COLOR>> {
+  class "Milliseconds_Type" {
+    <<new type>>
+    Range: 0 .. Long_Long_Integer'Last
+    --
+    + "+"(Left, Right) : Milliseconds_Type
+    + "-"(Left, Right) : Milliseconds_Type
+    + To_Seconds() : Seconds_Type
+    + To_Duration() : Duration
+  }
+  
+  class "Timeout_Ms_Type" {
+    <<new type>>
+    Range: 1 .. Max_Timeout_Ms
+    Purpose: Network timeouts
+  }
+  
+  class "Retry_Delay_Ms_Type" {
+    <<new type>>
+    Range: 0 .. Max_Retry_Delay_Ms
+    Purpose: Retry backoff delays
+  }
+}
+
+package "Byte Types" <<TYPE_COLOR>> {
+  class "SI_Bytes_Type" {
+    <<new type>>
+    Base: Long_Long_Integer
+    Purpose: Decimal (1000-based) units
+    --
+    + "+"(Left, Right) : SI_Bytes_Type
+    + "*"(Left: SI_Bytes_Type, Right: Natural) : SI_Bytes_Type
+    + To_KB() : SI_KB_Type
+    + To_MB() : SI_MB_Type
+  }
+  
+  class "IEC_Bytes_Type" {
+    <<new type>>
+    Base: Long_Long_Integer
+    Purpose: Binary (1024-based) units
+    --
+    + "+"(Left, Right) : IEC_Bytes_Type
+    + To_KiB() : IEC_KiB_Type
+    + To_MiB() : IEC_MiB_Type
+  }
+}
+
+package "Count Types" <<TYPE_COLOR>> {
+  class "Element_Count_Type" {
+    <<new type>>
+    Range: 0 .. Natural'Last
+    Purpose: Collection sizes
+  }
+  
+  class "Retry_Count_Type" {
+    <<new type>>
+    Range: 1 .. Max_Retries
+    Purpose: Retry attempts
+  }
+  
+  class "Worker_Count_Type" {
+    <<new type>>
+    Range: 1 .. Max_Workers
+    Purpose: Thread pool size
+  }
+}
+
+package "String Types" <<TYPE_COLOR>> {
+  class "Path_Length_Type" {
+    <<subtype>>
+    Range: 1 .. Max_Path_Length
+  }
+  
+  class "Email_Length_Type" {
+    <<subtype>>
+    Range: 3 .. Max_Email_Length
+  }
+  
+  class "Name_String" {
+    <<bounded string>>
+    Max_Length: 100
+  }
+}
+
+package "Conversion Functions" <<CONSTANT_COLOR>> {
+  class "Time Conversions" {
+    + Ms_To_Seconds(Ms: Milliseconds_Type) : Seconds_Type
+    + Seconds_To_Ms(S: Seconds_Type) : Milliseconds_Type
+    + Duration_To_Ms(D: Duration) : Milliseconds_Type
+  }
+  
+  class "Byte Conversions" {
+    + SI_To_IEC(SI: SI_Bytes_Type) : IEC_Bytes_Type
+    + IEC_To_SI(IEC: IEC_Bytes_Type) : SI_Bytes_Type
+    + From_KB(Value: Natural) : SI_Bytes_Type
+    + From_KiB(Value: Natural) : IEC_Bytes_Type
+  }
+}
+
+note top of "Time Types"
+  **Benefits of Strong Types:**
+  1. Prevent unit confusion
+  2. Catch errors at compile time
+  3. Self-documenting code
+  4. Type-safe interfaces
+end note
+
+note right of "SI_Bytes_Type"
+  **SI Units (Decimal):**
+  1 KB = 1,000 bytes
+  1 MB = 1,000,000 bytes
+  
+  Used for: disk manufacturers,
+  network speeds
+end note
+
+note right of "IEC_Bytes_Type"
+  **IEC Units (Binary):**
+  1 KiB = 1,024 bytes
+  1 MiB = 1,048,576 bytes
+  
+  Used for: memory, OS reporting
+end note
+
+note bottom
+  **Usage Example:**
+  -- Won't compile - type mismatch
+  Timeout : Timeout_Ms_Type := 5000;
+  Delay : Retry_Delay_Ms_Type := Timeout; -- Error!
+  
+  -- Explicit conversion required
+  Delay := Retry_Delay_Ms_Type(Natural(Timeout));
+end note
+
+@enduml

@@ -1,0 +1,611 @@
+--   =============================================================================
+--   Test_Lock_Free_Ring_Buffer - Unit tests for Lock-Free Ring Buffer
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Domain.Utilities.Concurrent.Lock_Free_Ring_Buffer;
+
+package body Test_Lock_Free_Ring_Buffer is
+
+--   ==========================================================================
+--   Test Setup
+--   ==========================================================================
+
+--   Constants
+   Small_Size : constant := 4;
+   Large_Size : constant := 1024;
+   pragma Unreferenced (Large_Size);
+
+--   Create a test instantiation with integers
+   package Int_Ring_Buffer is new
+      Abohlib.Core.Domain.Utilities.Concurrent.Lock_Free_Ring_Buffer
+        (Element_Type => Integer,
+         Buffer_Size  => Small_Size);
+
+   use Int_Ring_Buffer;
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Create_Buffer return Void_Result.Result is
+      Buffer : Ring_Buffer_Type;
+   begin
+--   Verify initial state
+      if not Is_Empty (Buffer) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("New buffer should be empty"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Buffer")
+         ));
+      end if;
+
+      if Is_Full (Buffer) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("New buffer should not be full"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Buffer")
+         ));
+      end if;
+
+      if Size (Buffer) /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("New buffer size should be 0"),
+            Details     => To_Unbounded_String ("Got: " & Size (Buffer)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Buffer")
+         ));
+      end if;
+
+      if Capacity (Buffer) /= Small_Size - 1 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Buffer capacity should be size - 1"),
+            Details     => To_Unbounded_String ("Expected: " & Natural'Image (Small_Size - 1) &
+                                               ", Got: " & Capacity (Buffer)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Buffer")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Create_Buffer;
+
+   function Test_Push_Pop_Single return Void_Result.Result is
+      Buffer : Ring_Buffer_Type;
+      Value  : constant Integer := 42;
+   begin
+--   Push a value
+      declare
+         Push_Res : constant Push_Result.Result := Try_Push (Buffer, Value);
+      begin
+         if not Push_Result.Is_Ok (Push_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Push should succeed on empty buffer"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Push_Pop_Single")
+            ));
+         end if;
+      end;
+
+--   Verify size
+      if Size (Buffer) /= 1 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Size should be 1 after push"),
+            Details     => To_Unbounded_String ("Got: " & Size (Buffer)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Push_Pop_Single")
+         ));
+      end if;
+
+--   Pop the value
+      declare
+         Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+      begin
+         if not Pop_Result.Is_Ok (Pop_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Pop should succeed on non-empty buffer"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Push_Pop_Single")
+            ));
+         end if;
+
+--   Verify value
+         declare
+            Result : constant Integer := Pop_Result.Get_Ok (Pop_Res);
+         begin
+            if Result /= Value then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Popped value should match pushed value"),
+                  Details     => To_Unbounded_String ("Expected: " & Value'Image &
+                                                     ", Got: " & Result'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Push_Pop_Single")
+               ));
+            end if;
+         end;
+      end;
+
+--   Verify empty again
+      if not Is_Empty (Buffer) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Buffer should be empty after pop"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Push_Pop_Single")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Push_Pop_Single;
+
+   function Test_Full_Buffer return Void_Result.Result is
+      Buffer : Ring_Buffer_Type;
+   begin
+--   Fill the buffer (capacity is size - 1)
+      for I in 1 .. Small_Size - 1 loop
+         declare
+            Push_Res : constant Push_Result.Result := Try_Push (Buffer, I);
+         begin
+            if not Push_Result.Is_Ok (Push_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Push should succeed until buffer is full"),
+                  Details     => To_Unbounded_String ("Failed at: " & I'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Full_Buffer")
+               ));
+            end if;
+         end;
+      end loop;
+
+--   Verify full
+      if not Is_Full (Buffer) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Buffer should be full"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Full_Buffer")
+         ));
+      end if;
+
+--   Try to push one more
+      declare
+         Push_Res : constant Push_Result.Result := Try_Push (Buffer, 999);
+      begin
+         if Push_Result.Is_Ok (Push_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Push should fail on full buffer"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Full_Buffer")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Full_Buffer;
+
+   pragma Warnings (Off, "function ""Test_Pop_Empty"" is not referenced");
+   function Test_Pop_Empty return Void_Result.Result is
+   pragma Warnings (On, "function ""Test_Pop_Empty"" is not referenced");
+      Buffer : Ring_Buffer_Type;
+   begin
+--   Try to pop from empty buffer
+      declare
+         Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+      begin
+         if Pop_Result.Is_Ok (Pop_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Pop should fail on empty buffer"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Pop_Empty")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Pop_Empty;
+
+   function Test_FIFO_Order return Void_Result.Result is
+      Buffer : Ring_Buffer_Type;
+      Values : constant array (1 .. 3) of Integer := [10, 20, 30];
+   begin
+--   Push values
+      for Value of Values loop
+         declare
+            Push_Res : constant Push_Result.Result := Try_Push (Buffer, Value);
+         begin
+            if not Push_Result.Is_Ok (Push_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Push should succeed"),
+                  Details     => To_Unbounded_String ("Failed to push: " & Value'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_FIFO_Order")
+               ));
+            end if;
+         end;
+      end loop;
+
+--   Pop and verify order
+      for I in Values'Range loop
+         declare
+            Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+         begin
+            if not Pop_Result.Is_Ok (Pop_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Pop should succeed"),
+                  Details     => To_Unbounded_String ("Failed at index: " & I'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_FIFO_Order")
+               ));
+            end if;
+
+            declare
+               Result : constant Integer := Pop_Result.Get_Ok (Pop_Res);
+            begin
+               if Result /= Values (I) then
+                  return Void_Result.Err (Test_Error'(
+                     Kind        => Assertion_Failed,
+                     Message     => To_Unbounded_String ("FIFO order not maintained"),
+                     Details     => To_Unbounded_String ("Expected: " & Values (I)'Image &
+                                                        ", Got: " & Result'Image),
+                     Line_Number => 0,
+                     Test_Name   => To_Unbounded_String ("Test_FIFO_Order")
+                  ));
+               end if;
+            end;
+         end;
+      end loop;
+
+      return Void_Result.Ok (True);
+   end Test_FIFO_Order;
+
+   function Test_Wrap_Around return Void_Result.Result is
+      Buffer : Ring_Buffer_Type;
+   begin
+--   Fill buffer
+      for I in 1 .. Small_Size - 1 loop
+         declare
+            Push_Res : constant Push_Result.Result := Try_Push (Buffer, I);
+         begin
+            if not Push_Result.Is_Ok (Push_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Initial push should succeed"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+               ));
+            end if;
+         end;
+      end loop;
+
+--   Pop one to make space
+      declare
+         Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+      begin
+         if not Pop_Result.Is_Ok (Pop_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Pop should succeed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+            ));
+         end if;
+      end;
+
+--   Push one more (should wrap around)
+      declare
+         Push_Res : constant Push_Result.Result := Try_Push (Buffer, 100);
+      begin
+         if not Push_Result.Is_Ok (Push_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Push should succeed after making space"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+            ));
+         end if;
+      end;
+
+--   Pop all and verify values
+      for I in 2 .. Small_Size - 1 loop
+         declare
+            Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+         begin
+            if not Pop_Result.Is_Ok (Pop_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Pop should succeed"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+               ));
+            end if;
+
+            declare
+               Result : constant Integer := Pop_Result.Get_Ok (Pop_Res);
+            begin
+               if Result /= I then
+                  return Void_Result.Err (Test_Error'(
+                     Kind        => Assertion_Failed,
+                     Message     => To_Unbounded_String ("Incorrect value after wrap"),
+                     Details     => To_Unbounded_String ("Expected: " & I'Image &
+                                                        ", Got: " & Result'Image),
+                     Line_Number => 0,
+                     Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+                  ));
+               end if;
+            end;
+         end;
+      end loop;
+
+--   Get the wrapped value
+      declare
+         Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+      begin
+         if not Pop_Result.Is_Ok (Pop_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Final pop should succeed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+            ));
+         end if;
+
+         declare
+            Result : constant Integer := Pop_Result.Get_Ok (Pop_Res);
+         begin
+            if Result /= 100 then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Wrapped value incorrect"),
+                  Details     => To_Unbounded_String ("Expected: 100, Got: " & Result'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Wrap_Around")
+               ));
+            end if;
+         end;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Wrap_Around;
+
+   pragma Warnings (Off, "function ""Test_Size_Tracking"" is not referenced");
+   function Test_Size_Tracking return Void_Result.Result is
+   pragma Warnings (On, "function ""Test_Size_Tracking"" is not referenced");
+      Buffer : Ring_Buffer_Type;
+   begin
+--   Verify initial size
+      if Size (Buffer) /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Initial size should be 0"),
+            Details     => To_Unbounded_String ("Got: " & Size (Buffer)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Size_Tracking")
+         ));
+      end if;
+
+--   Push and verify size increases
+      for I in 1 .. 3 loop
+         declare
+            Push_Res : constant Push_Result.Result := Try_Push (Buffer, I);
+         begin
+            if not Push_Result.Is_Ok (Push_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Push should succeed"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Size_Tracking")
+               ));
+            end if;
+         end;
+
+         if Size (Buffer) /= I then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Size should match push count"),
+               Details     => To_Unbounded_String ("Expected: " & I'Image &
+                                                  ", Got: " & Size (Buffer)'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Size_Tracking")
+            ));
+         end if;
+      end loop;
+
+--   Pop and verify size decreases
+      for I in reverse 1 .. 3 loop
+         declare
+            Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+         begin
+            if not Pop_Result.Is_Ok (Pop_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Pop should succeed"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Size_Tracking")
+               ));
+            end if;
+         end;
+
+         if Size (Buffer) /= I - 1 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Size should decrease after pop"),
+               Details     => To_Unbounded_String ("Expected: " & Natural'Image (I - 1) &
+                                                  ", Got: " & Size (Buffer)'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Size_Tracking")
+            ));
+         end if;
+      end loop;
+
+      return Void_Result.Ok (True);
+   end Test_Size_Tracking;
+
+   function Test_Error_Conditions return Void_Result.Result is
+      Buffer : Ring_Buffer_Type;
+   begin
+--   Test buffer full error
+      for I in 1 .. Small_Size - 1 loop
+         declare
+            Push_Res : constant Push_Result.Result := Try_Push (Buffer, I);
+         begin
+            if not Push_Result.Is_Ok (Push_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Push should succeed until full"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Error_Conditions")
+               ));
+            end if;
+         end;
+      end loop;
+
+--   Now buffer is full, next push should fail
+      declare
+         Push_Res : constant Push_Result.Result := Try_Push (Buffer, 999);
+      begin
+         if Push_Result.Is_Ok (Push_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Push should fail when buffer is full"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Error_Conditions")
+            ));
+         end if;
+
+--   Buffer is full, push should fail (we don't check specific error type)
+         pragma Unreferenced (Push_Res);
+      end;
+
+--   Empty the buffer
+      for I in 1 .. Small_Size - 1 loop
+         declare
+            Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+         begin
+            if not Pop_Result.Is_Ok (Pop_Res) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Pop should succeed"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Error_Conditions")
+               ));
+            end if;
+         end;
+      end loop;
+
+--   Test buffer empty error
+      declare
+         Pop_Res : constant Pop_Result.Result := Try_Pop (Buffer);
+      begin
+         if Pop_Result.Is_Ok (Pop_Res) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Pop should fail when buffer is empty"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Error_Conditions")
+            ));
+         end if;
+
+--   Buffer is empty, pop should fail (we don't check specific error type)
+         pragma Unreferenced (Pop_Res);
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Error_Conditions;
+
+--   ==========================================================================
+--   Test Registration
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 6);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Test_Func : Test_Function_Access)
+      is
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test (Name, Test_Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            Output.Write_Error ("Failed to run test: " & Name);
+         end if;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("=== Running Lock-Free Ring Buffer Tests ===");
+      Output.Write_Line ("");
+
+      Add_Test_Result ("Create Buffer", Test_Create_Buffer'Access);
+      Add_Test_Result ("Push Pop Single", Test_Push_Pop_Single'Access);
+      Add_Test_Result ("Full Buffer", Test_Full_Buffer'Access);
+      Add_Test_Result ("FIFO Order", Test_FIFO_Order'Access);
+      Add_Test_Result ("Error Conditions", Test_Error_Conditions'Access);
+      Add_Test_Result ("Wrap Around", Test_Wrap_Around'Access);
+
+--   Generate summary
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Lock-Free Ring Buffer Tests", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Lock-Free Ring Buffer Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Lock_Free_Ring_Buffer;
+
+pragma Warnings (On, "subprogram body has no previous spec");

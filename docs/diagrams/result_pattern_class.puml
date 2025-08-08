@@ -1,0 +1,113 @@
+@startuml Result_Pattern_Class
+!theme aws-orange
+title Result Pattern Implementation\nType-Safe Error Handling
+
+!define INTERFACE_COLOR #E8F4F8
+!define CLASS_COLOR #FFF2E8
+!define GENERIC_COLOR #F0F8E8
+
+package "Abohlib.Core.Domain.Result" {
+  
+  class "Result_Package<Ok_Type, Err_Type>" <<generic>> <<GENERIC_COLOR>> {
+    - Variant : Result_Variant
+    - Ok_Value : Ok_Type
+    - Err_Value : Err_Type
+    --
+    + Ok(Value : Ok_Type) : Result
+    + Err(Error : Err_Type) : Result
+    + Is_Ok() : Boolean
+    + Is_Err() : Boolean
+    + Get_Ok() : Ok_Type
+    + Get_Err() : Err_Type
+    + Get_Ok_Or(Default : Ok_Type) : Ok_Type
+    + Get_Err_Or(Default : Err_Type) : Err_Type
+    + Match<Return_Type>() : Return_Type
+  }
+  
+  enum Result_Variant {
+    Ok_Variant
+    Err_Variant
+  }
+  
+  note right of "Result_Package<Ok_Type, Err_Type>"
+    **Key Features:**
+    - No exceptions across boundaries
+    - Compile-time type safety
+    - Forces error handling
+    - Supports pattern matching
+    
+    **Usage Example:**
+    function Divide(A, B : Float) return Result is
+    begin
+      if B = 0.0 then
+        return Err("Division by zero");
+      else
+        return Ok(A / B);
+      end if;
+    end Divide;
+  end note
+}
+
+package "Common Instantiations" <<CLASS_COLOR>> {
+  
+  class "Test_Result" {
+    Ok_Type => Test_Result_Type
+    Err_Type => Test_Error
+  }
+  
+  class "Pipeline_Result" {
+    Ok_Type => Output_Type
+    Err_Type => Stage_Error
+  }
+  
+  class "Retry_Result" {
+    Ok_Type => Result_Type
+    Err_Type => Retry_Error
+  }
+  
+  class "Void_Result" {
+    Ok_Type => Boolean
+    Err_Type => Error_Type
+  }
+}
+
+package "Error Types" <<INTERFACE_COLOR>> {
+  
+  class Domain_Error {
+    + Kind : Error_Kind
+    + Message : String
+    + Context : String
+  }
+  
+  class Application_Error {
+    + Kind : App_Error_Kind
+    + Message : String
+    + Details : String
+  }
+  
+  class Infrastructure_Error {
+    + Kind : Infra_Error_Kind
+    + Message : String
+    + System_Error : String
+  }
+}
+
+"Result_Package<Ok_Type, Err_Type>" --> Result_Variant : uses
+"Test_Result" --|> "Result_Package<Ok_Type, Err_Type>" : instantiates
+"Pipeline_Result" --|> "Result_Package<Ok_Type, Err_Type>" : instantiates
+"Retry_Result" --|> "Result_Package<Ok_Type, Err_Type>" : instantiates
+"Void_Result" --|> "Result_Package<Ok_Type, Err_Type>" : instantiates
+
+Domain_Error --|> "Err_Type" : can be
+Application_Error --|> "Err_Type" : can be
+Infrastructure_Error --|> "Err_Type" : can be
+
+note bottom of "Common Instantiations"
+  **Pattern Benefits:**
+  1. Explicit error handling
+  2. No hidden control flow
+  3. Composable operations
+  4. Type-safe error propagation
+end note
+
+@enduml

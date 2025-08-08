@@ -1,0 +1,283 @@
+--   =============================================================================
+--   Test_Test_Data - Unit test implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Streams; use Ada.Streams;
+with Ada.Directories;
+with Abohlib.Infrastructure.Testing.Test_Data;
+with Abohlib.Infrastructure.Testing.Test_Resources;
+with Abohlib.Infrastructure.Testing.Test_Framework;
+
+package body Test_Data is
+
+   use Abohlib.Infrastructure.Testing.Test_Data;
+   use Abohlib.Infrastructure.Testing.Test_Resources;
+   use type Ada.Directories.File_Size;
+
+--   Resolve Void_Result ambiguity
+   package Framework_Result renames Abohlib.Infrastructure.Testing.Test_Framework.Void_Result;
+
+--   Procedure specifications
+   function Test_Fill_Zero return Framework_Result.Result;
+   function Test_Fill_Sequential return Framework_Result.Result;
+   function Test_Fill_Pattern return Framework_Result.Result;
+   function Test_Fill_Random return Framework_Result.Result;
+   function Test_File_Generation return Framework_Result.Result;
+   function Test_Unique_Filename return Framework_Result.Result;
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Fill_Zero return Framework_Result.Result is
+      Buffer : Stream_Element_Array (1 .. 100);
+   begin
+      Fill_Zero (Buffer);
+
+      for Element of Buffer loop
+         if Element /= 0 then
+            return Framework_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Buffer should contain all zeros"),
+               Details     => To_Unbounded_String ("Found non-zero: " & Element'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Fill_Zero")
+            ));
+         end if;
+      end loop;
+
+      return Framework_Result.Ok (True);
+   end Test_Fill_Zero;
+
+   function Test_Fill_Sequential return Framework_Result.Result is
+      Buffer : Stream_Element_Array (1 .. 300);
+   begin
+      Fill_Sequential (Buffer);
+
+      for I in Buffer'Range loop
+         declare
+            Expected : constant Stream_Element :=
+               Stream_Element ((Natural (I) - 1) mod 256);
+         begin
+            if Buffer (I) /= Expected then
+               return Framework_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Sequential pattern incorrect"),
+                  Details     => To_Unbounded_String
+                     ("At " & I'Image & ": expected " & Expected'Image &
+                      ", got " & Buffer (I)'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Fill_Sequential")
+               ));
+            end if;
+         end;
+      end loop;
+
+      return Framework_Result.Ok (True);
+   end Test_Fill_Sequential;
+
+   function Test_Fill_Pattern return Framework_Result.Result is
+      Pattern : constant Stream_Element_Array := [1, 2, 3, 4];
+      Buffer : Stream_Element_Array (1 .. 10);
+   begin
+      Fill_Pattern (Buffer, Pattern);
+
+--   Check pattern repeats correctly
+      if Buffer /= [1, 2, 3, 4, 1, 2, 3, 4, 1, 2] then
+         return Framework_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Pattern repetition incorrect"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Fill_Pattern")
+         ));
+      end if;
+
+      return Framework_Result.Ok (True);
+   end Test_Fill_Pattern;
+
+   function Test_Fill_Random return Framework_Result.Result is
+      Buffer1, Buffer2 : Stream_Element_Array (1 .. 100);
+   begin
+--   Same seed should produce same data
+      Fill_Random (Buffer1, Seed => 42);
+      Fill_Random (Buffer2, Seed => 42);
+
+      if Buffer1 /= Buffer2 then
+         return Framework_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Same seed should produce same data"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Fill_Random")
+         ));
+      end if;
+
+--   Different seeds should produce different data
+      Fill_Random (Buffer2, Seed => 123);
+
+      if Buffer1 = Buffer2 then
+         return Framework_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Different seeds should produce different data"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Fill_Random")
+         ));
+      end if;
+
+      return Framework_Result.Ok (True);
+   end Test_Fill_Random;
+
+   function Test_File_Generation return Framework_Result.Result is
+      Tracker : Resource_Tracker;
+      Path_Result : constant Abohlib.Infrastructure.Testing.Test_Resources.String_Result.Result :=
+         Create_Temp_File (Tracker, "test_gen.dat");
+   begin
+      if not Abohlib.Infrastructure.Testing.Test_Resources.String_Result.Is_Ok (Path_Result) then
+         return Framework_Result.Err (Test_Error'(
+            Kind => Assertion_Failed,
+            Message => To_Unbounded_String ("Failed to create temp file"),
+            Details => To_Unbounded_String (""),
+            Line_Number => 0,
+            Test_Name => To_Unbounded_String ("Test_File_Generation")
+         ));
+      end if;
+
+      declare
+         Path : constant String := To_String (
+            Abohlib.Infrastructure.Testing.Test_Resources.String_Result.Get_Ok (Path_Result));
+      begin
+--   Generate zero file
+      declare
+         Gen_Result : constant Abohlib.Infrastructure.Testing.Test_Resources.Void_Result.Result :=
+            Generate_Zero_File (Path, 1024);
+      begin
+         if not Abohlib.Infrastructure.Testing.Test_Resources.Void_Result.Is_Ok (Gen_Result) then
+            return Framework_Result.Err (Test_Error'(
+               Kind => Assertion_Failed,
+               Message => To_Unbounded_String ("Failed to generate test file"),
+               Details => To_Unbounded_String (""),
+               Line_Number => 0,
+               Test_Name => To_Unbounded_String ("Test_File_Generation")
+            ));
+         end if;
+      end;
+
+--   Verify file exists and has correct size
+      if not Ada.Directories.Exists (Path) then
+         return Framework_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Generated file does not exist"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_File_Generation")
+         ));
+      end if;
+
+      if Ada.Directories.Size (Path) /= 1024 then
+         return Framework_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("File size incorrect"),
+            Details     => To_Unbounded_String
+                ("Expected: 1024, Got: " & Ada.Directories.Size (Path)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_File_Generation")
+         ));
+      end if;
+
+      return Framework_Result.Ok (True);
+      end;  --  Path declare block
+   end Test_File_Generation;
+
+   function Test_Unique_Filename return Framework_Result.Result is
+      Name1 : constant String := Unique_Test_Filename;
+      Name2 : constant String := Unique_Test_Filename;
+   begin
+      if Name1 = Name2 then
+         return Framework_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Unique filenames should be different"),
+            Details     => To_Unbounded_String ("Got: " & Name1 & " twice"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Unique_Filename")
+         ));
+      end if;
+
+      return Framework_Result.Ok (True);
+   end Test_Unique_Filename;
+
+--   ==========================================================================
+--   Test Runner
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Test_Count : constant := 6;
+      Tests : Test_Results_Array (1 .. Test_Count);
+      Index : Positive := 1;
+
+      procedure Run_Single_Test
+        (Name : String;
+         Func : Test_Function_Access) is
+         Result : constant Test_Result_Pkg.Result := Run_Test (Name, Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => 0.0,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => To_Unbounded_String ("TEST-" & Name)
+               );
+               Print_Test_Result (Tests (Index), Output);
+               Index := Index + 1;
+            end;
+         end if;
+      end Run_Single_Test;
+
+   begin
+      Output.Write_Line ("=== Running Test Data Tests ===");
+      Output.Write_Line ("");
+
+      Run_Single_Test ("Fill Zero", Test_Fill_Zero'Access);
+      Run_Single_Test ("Fill Sequential", Test_Fill_Sequential'Access);
+      Run_Single_Test ("Fill Pattern", Test_Fill_Pattern'Access);
+      Run_Single_Test ("Fill Random", Test_Fill_Random'Access);
+      Run_Single_Test ("File Generation", Test_File_Generation'Access);
+      Run_Single_Test ("Unique Filename", Test_Unique_Filename'Access);
+
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Test Data", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Test Data Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Data;

@@ -1,0 +1,507 @@
+--   =============================================================================
+--   Test_Application_Errors - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--
+--   Purpose:
+--     Unit tests for application layer error types including use case errors
+--     and workflow errors.
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Calendar;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Application.Errors;
+with Abohlib.Core.Domain.Errors;
+
+package body Test_Application_Errors is
+
+   use Abohlib.Core.Application.Errors;
+   use Abohlib.Core.Domain.Errors;
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Use_Case_Error_Creation return Void_Result.Result is
+      Error : Use_Case_Error;
+   begin
+--  Test creating a basic use case error
+      Error := Make_Use_Case_Error (
+         Kind          => Precondition_Not_Met,
+         Use_Case_Name => "CreateUserAccount",
+         Failed_Step   => "ValidateEmail"
+      );
+
+--  Verify error kind
+      if Error.Kind /= Precondition_Not_Met then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Error kind should be Precondition_Not_Met"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Creation")
+         ));
+      end if;
+
+--  Verify use case name
+      if Use_Case_Strings.To_String (Error.Use_Case_Name) /= "CreateUserAccount" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Use case name should be preserved"),
+            Details     => To_Unbounded_String ("Got: " & Use_Case_Strings.To_String (Error.Use_Case_Name)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Creation")
+         ));
+      end if;
+
+--  Verify failed step
+      if Step_Strings.To_String (Error.Failed_Step) /= "ValidateEmail" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Failed step should be preserved"),
+            Details     => To_Unbounded_String ("Got: " & Step_Strings.To_String (Error.Failed_Step)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Creation")
+         ));
+      end if;
+
+--  Verify base domain error was created
+      if Error.Base.Category /= Business_Rule_Error then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Base error should have Business_Rule_Error category"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Creation")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Use_Case_Error_Creation;
+
+   function Test_Use_Case_Error_Default_Messages return Void_Result.Result is
+      Test_Cases : constant array (1 .. 5) of Use_Case_Error_Kind := (
+         Precondition_Not_Met,
+         Step_Failed,
+         Coordination_Failed,
+         Transaction_Failed,
+         Compensation_Failed
+      );
+   begin
+--  Test that default messages are generated for each error kind
+      for Kind of Test_Cases loop
+         declare
+            Error : constant Use_Case_Error := Make_Use_Case_Error (
+               Kind          => Kind,
+               Use_Case_Name => "TestUseCase",
+               Failed_Step   => "TestStep"
+            );
+            Message : constant String := Error_Strings.To_String (Error.Base.Message);
+         begin
+--  Verify message is not empty
+            if Message = "" then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Default message should not be empty for " & Kind'Image),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Default_Messages")
+               ));
+            end if;
+
+--  Verify message contains use case name
+            if not (Message'Length > 0 and then
+                   (for some I in Message'Range =>
+                      (I + 10 <= Message'Last and then
+                       Message (I .. I + 10) = "TestUseCase"))) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Message should contain use case name"),
+                  Details     => To_Unbounded_String ("Message: " & Message),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Default_Messages")
+               ));
+            end if;
+         end;
+      end loop;
+
+      return Void_Result.Ok (True);
+   end Test_Use_Case_Error_Default_Messages;
+
+   function Test_Use_Case_Error_Custom_Messages return Void_Result.Result is
+      Custom_Message : constant String := "Custom error message for testing";
+      Custom_Recovery : constant String := "Custom recovery suggestion";
+      Error : Use_Case_Error;
+   begin
+--  Test creating error with custom message and recovery
+      Error := Make_Use_Case_Error (
+         Kind          => Step_Failed,
+         Use_Case_Name => "TestUseCase",
+         Failed_Step   => "TestStep",
+         Message       => Custom_Message,
+         Recovery      => Custom_Recovery
+      );
+
+--  Verify custom message is used
+      if Error_Strings.To_String (Error.Base.Message) /= Custom_Message then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Custom message should be used"),
+            Details     => To_Unbounded_String ("Got: " & Error_Strings.To_String (Error.Base.Message)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Custom_Messages")
+         ));
+      end if;
+
+--  Verify custom recovery suggestion is used
+      if Recovery_Strings.To_String (Error.Base.Recovery_Suggestion) /= Custom_Recovery then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Custom recovery suggestion should be used"),
+            Details     => To_Unbounded_String ("Got: " & Recovery_Strings.To_String (Error.Base.Recovery_Suggestion)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_Custom_Messages")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Use_Case_Error_Custom_Messages;
+
+   function Test_Use_Case_Error_To_String return Void_Result.Result is
+      Error : Use_Case_Error;
+      Error_String : String (1 .. 1000);
+      Last : Natural := 0;
+   begin
+--  Test To_String formatting
+      Error := Make_Use_Case_Error (
+         Kind          => Step_Failed,
+         Use_Case_Name => "ProcessPayment",
+         Failed_Step   => "ValidateCard"
+      );
+
+      declare
+         Result_String : constant String := To_String (Error);
+      begin
+--  Verify string contains use case name
+         if not (for some I in Result_String'Range =>
+                   (I + 13 <= Result_String'Last and then
+                    Result_String (I .. I + 13) = "ProcessPayment")) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String representation should contain use case name"),
+               Details     => To_Unbounded_String ("Got: " & Result_String),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_To_String")
+            ));
+         end if;
+
+--  Verify string contains step name
+         if not (for some I in Result_String'Range =>
+                   (I + 11 <= Result_String'Last and then
+                    Result_String (I .. I + 11) = "ValidateCard")) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String representation should contain step name"),
+               Details     => To_Unbounded_String ("Got: " & Result_String),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Use_Case_Error_To_String")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Use_Case_Error_To_String;
+
+   function Test_Workflow_Error_Creation return Void_Result.Result is
+      Error : Workflow_Error;
+   begin
+--  Test creating a workflow error
+      Error := Make_Workflow_Error (
+         Workflow_Name   => "UserRegistration",
+         Current_Step    => "SendConfirmationEmail",
+         Steps_Completed => 3,
+         Total_Steps     => 5
+      );
+
+--  Verify workflow name
+      if Use_Case_Strings.To_String (Error.Workflow_Name) /= "UserRegistration" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Workflow name should be preserved"),
+            Details     => To_Unbounded_String ("Got: " & Use_Case_Strings.To_String (Error.Workflow_Name)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Workflow_Error_Creation")
+         ));
+      end if;
+
+--  Verify current step
+      if Step_Strings.To_String (Error.Current_Step) /= "SendConfirmationEmail" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Current step should be preserved"),
+            Details     => To_Unbounded_String ("Got: " & Step_Strings.To_String (Error.Current_Step)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Workflow_Error_Creation")
+         ));
+      end if;
+
+--  Verify progress tracking
+      if Error.Steps_Completed /= 3 or Error.Total_Steps /= 5 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Progress should be preserved"),
+            Details     => To_Unbounded_String ("Got: " & Error.Steps_Completed'Image & "/" & Error.Total_Steps'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Workflow_Error_Creation")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Workflow_Error_Creation;
+
+   function Test_Workflow_Error_Default_Messages return Void_Result.Result is
+      Error : Workflow_Error;
+   begin
+--  Test that default workflow message contains workflow details
+      Error := Make_Workflow_Error (
+         Workflow_Name   => "OrderProcessing",
+         Current_Step    => "ChargePayment",
+         Steps_Completed => 2,
+         Total_Steps     => 4
+      );
+
+      declare
+         Message : constant String := Error_Strings.To_String (Error.Base.Message);
+      begin
+--  Verify message contains workflow name
+         if not (for some I in Message'Range =>
+                   (I + 14 <= Message'Last and then
+                    Message (I .. I + 14) = "OrderProcessing")) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Default message should contain workflow name"),
+               Details     => To_Unbounded_String ("Message: " & Message),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Workflow_Error_Default_Messages")
+            ));
+         end if;
+
+--  Verify message contains current step
+         if not (for some I in Message'Range =>
+                   (I + 12 <= Message'Last and then
+                    Message (I .. I + 12) = "ChargePayment")) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Default message should contain current step"),
+               Details     => To_Unbounded_String ("Message: " & Message),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Workflow_Error_Default_Messages")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Workflow_Error_Default_Messages;
+
+   function Test_Workflow_Error_To_String return Void_Result.Result is
+      Error : Workflow_Error;
+   begin
+--  Test workflow error string representation
+      Error := Make_Workflow_Error (
+         Workflow_Name   => "DataMigration",
+         Current_Step    => "TransformRecords",
+         Steps_Completed => 7,
+         Total_Steps     => 10
+      );
+
+      declare
+         Result_String : constant String := To_String (Error);
+      begin
+--  Verify string contains workflow information
+         if not (for some I in Result_String'Range =>
+                   (I + 12 <= Result_String'Last and then
+                    Result_String (I .. I + 12) = "DataMigration")) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String should contain workflow name"),
+               Details     => To_Unbounded_String ("Got: " & Result_String),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Workflow_Error_To_String")
+            ));
+         end if;
+
+--  Verify string contains progress information - look for " 7" and " 10" (with leading spaces from 'Image)
+         if not ((for some I in Result_String'Range =>
+                    (I + 1 <= Result_String'Last and then
+                     Result_String (I .. I + 1) = " 7")) and
+                 (for some I in Result_String'Range =>
+                    (I + 2 <= Result_String'Last and then
+                     Result_String (I .. I + 2) = " 10"))) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("String should contain progress information"),
+               Details     => To_Unbounded_String ("Got: " & Result_String),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Workflow_Error_To_String")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Workflow_Error_To_String;
+
+   function Test_Error_Kind_Coverage return Void_Result.Result is
+--  Test that all error kinds can be created without issues
+      All_Kinds : constant array (1 .. 5) of Use_Case_Error_Kind := (
+         Precondition_Not_Met,
+         Step_Failed,
+         Coordination_Failed,
+         Transaction_Failed,
+         Compensation_Failed
+      );
+   begin
+      for Kind of All_Kinds loop
+         declare
+            Error : constant Use_Case_Error := Make_Use_Case_Error (
+               Kind          => Kind,
+               Use_Case_Name => "TestCase_" & Kind'Image,
+               Failed_Step   => "Step_" & Kind'Image
+            );
+         begin
+--  Verify error was created successfully
+            if Error.Kind /= Kind then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Error kind mismatch for " & Kind'Image),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Error_Kind_Coverage")
+               ));
+            end if;
+
+--  Verify base error has reasonable defaults
+            if Error.Base.Severity /= Abohlib.Core.Domain.Errors.Error then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Error severity should be Error for " & Kind'Image),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Error_Kind_Coverage")
+               ));
+            end if;
+         end;
+      end loop;
+
+      return Void_Result.Ok (True);
+   end Test_Error_Kind_Coverage;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 8);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Func : access function return Void_Result.Result)
+      is
+         Start_Time : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+         Result     : constant Void_Result.Result := Func.all;
+         End_Time   : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+         Duration   : constant Standard.Duration := Ada.Calendar."-" (End_Time, Start_Time);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Test_Result'(
+               Name           => To_Unbounded_String (Name),
+               Status         => Passed,
+               Message        => To_Unbounded_String ("Test passed"),
+               Elapsed_Time   => Duration,
+               Line_Number    => 0,
+               Correlation_ID => Null_Unbounded_String
+            );
+         else
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => Duration,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => Null_Unbounded_String
+               );
+            end;
+         end if;
+
+         Print_Test_Result (Tests (Index), Output);
+         Index := Index + 1;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("");
+      Output.Write_Line ("=== Running Application Errors Unit Tests ===");
+      Output.Write_Line ("");
+
+--  Run all tests
+      Add_Test_Result ("Test_Use_Case_Error_Creation", Test_Use_Case_Error_Creation'Access);
+      Add_Test_Result ("Test_Use_Case_Error_Default_Messages", Test_Use_Case_Error_Default_Messages'Access);
+      Add_Test_Result ("Test_Use_Case_Error_Custom_Messages", Test_Use_Case_Error_Custom_Messages'Access);
+      Add_Test_Result ("Test_Use_Case_Error_To_String", Test_Use_Case_Error_To_String'Access);
+      Add_Test_Result ("Test_Workflow_Error_Creation", Test_Workflow_Error_Creation'Access);
+      Add_Test_Result ("Test_Workflow_Error_Default_Messages", Test_Workflow_Error_Default_Messages'Access);
+      Add_Test_Result ("Test_Workflow_Error_To_String", Test_Workflow_Error_To_String'Access);
+      Add_Test_Result ("Test_Error_Kind_Coverage", Test_Error_Kind_Coverage'Access);
+
+--  Generate summary
+      declare
+         Stats : Test_Statistics := (others => <>);
+      begin
+         for Test of Tests loop
+            Stats.Total_Tests := Stats.Total_Tests + 1;
+            case Test.Status is
+               when Passed =>
+                  Stats.Passed_Tests := Stats.Passed_Tests + 1;
+               when Failed =>
+                  Stats.Failed_Tests := Stats.Failed_Tests + 1;
+               when Skipped =>
+                  Stats.Skipped_Tests := Stats.Skipped_Tests + 1;
+               when Error =>
+                  Stats.Error_Tests := Stats.Error_Tests + 1;
+            end case;
+            Stats.Total_Duration := Stats.Total_Duration + Test.Elapsed_Time;
+         end loop;
+
+         Output.Write_Line ("");
+         Output.Write_Line ("============================================================");
+         Output.Write_Line ("Test Suite: Application Errors Unit Tests");
+         Output.Write_Line ("============================================================");
+         Print_Test_Statistics (Stats, Output);
+
+         if Stats.Failed_Tests = 0 and Stats.Error_Tests = 0 then
+            Output.Write_Line ("Result: ALL TESTS PASSED");
+            return Test_Stats_Result.Ok (Stats);
+         else
+            Output.Write_Line ("Result: SOME TESTS FAILED");
+            return Test_Stats_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Some tests failed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Application Errors Tests")
+            ));
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Application_Errors;
+
+pragma Warnings (On, "subprogram body has no previous spec");

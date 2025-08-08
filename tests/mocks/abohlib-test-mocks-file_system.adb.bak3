@@ -1,0 +1,408 @@
+--   =============================================================================
+--   Abohlib.Test.Mocks.File_System - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Strings.Fixed;
+with Ada.Unchecked_Conversion;
+with System;
+
+package body Abohlib.Test.Mocks.File_System is
+
+--   ==========================================================================
+--   Helper to increment counter (works around 'in' parameter restriction)
+--   ==========================================================================
+
+   procedure Increment_Counter (Self : Mock_File_System_Provider) is
+      type Counter_Access is access all Natural;
+      function To_Counter_Access is new Ada.Unchecked_Conversion
+        (System.Address, Counter_Access);
+      Counter : constant Counter_Access := To_Counter_Access (Self.Call_Count'Address);
+   begin
+      Counter.all := Counter.all + 1;
+   end Increment_Counter;
+
+--   ==========================================================================
+--   Setup Methods
+--   ==========================================================================
+
+   procedure Add_File
+     (Self      : in out Mock_File_System_Provider;
+      Path      : String;
+      Size      : Natural := 0;
+      Extension : String := "";
+      Base_Name : String := "";
+      Directory : String := "")
+   is
+      Entry_Val : Mock_File_Entry;
+   begin
+      Entry_Val.Exists := True;
+      Entry_Val.Is_File := True;
+      Entry_Val.Is_Dir := False;
+      Entry_Val.Size := Size;
+
+      if Extension'Length > 0 then
+         Entry_Val.Extension := To_Unbounded_String (Extension);
+      else
+--  Extract extension from path
+         declare
+            Last_Dot : constant Natural :=
+               Ada.Strings.Fixed.Index (Path, "" & Self.Extension_Separator, Ada.Strings.Backward);
+         begin
+            if Last_Dot > 0 and Last_Dot < Path'Last then
+               Entry_Val.Extension := To_Unbounded_String (Path (Last_Dot .. Path'Last));
+            end if;
+         end;
+      end if;
+
+      if Base_Name'Length > 0 then
+         Entry_Val.Base_Name := To_Unbounded_String (Base_Name);
+      else
+--  Extract base name from path
+         declare
+            Last_Sep : constant Natural :=
+               Ada.Strings.Fixed.Index (Path, "" & Self.Path_Separator, Ada.Strings.Backward);
+         begin
+            if Last_Sep > 0 and Last_Sep < Path'Last then
+               Entry_Val.Base_Name := To_Unbounded_String (Path (Last_Sep + 1 .. Path'Last));
+            else
+               Entry_Val.Base_Name := To_Unbounded_String (Path);
+            end if;
+         end;
+      end if;
+
+      if Directory'Length > 0 then
+         Entry_Val.Directory := To_Unbounded_String (Directory);
+      else
+--  Extract directory from path
+         declare
+            Last_Sep : constant Natural :=
+               Ada.Strings.Fixed.Index (Path, "" & Self.Path_Separator, Ada.Strings.Backward);
+         begin
+            if Last_Sep > 0 then
+               Entry_Val.Directory := To_Unbounded_String (Path (Path'First .. Last_Sep - 1));
+            end if;
+         end;
+      end if;
+
+      Self.Files.Include (Path, Entry_Val);
+   end Add_File;
+
+   procedure Add_Directory
+     (Self : in out Mock_File_System_Provider;
+      Path : String)
+   is
+      Entry_Val : Mock_File_Entry;
+   begin
+      Entry_Val.Exists := True;
+      Entry_Val.Is_File := False;
+      Entry_Val.Is_Dir := True;
+      Entry_Val.Size := 0;
+
+--  Extract base name
+      declare
+         Last_Sep : constant Natural :=
+            Ada.Strings.Fixed.Index (Path, "" & Self.Path_Separator, Ada.Strings.Backward);
+      begin
+         if Last_Sep > 0 and Last_Sep < Path'Last then
+            Entry_Val.Base_Name := To_Unbounded_String (Path (Last_Sep + 1 .. Path'Last));
+         else
+            Entry_Val.Base_Name := To_Unbounded_String (Path);
+         end if;
+      end;
+
+      Self.Files.Include (Path, Entry_Val);
+   end Add_Directory;
+
+   procedure Set_Fail_Next
+     (Self  : in out Mock_File_System_Provider;
+      Error : File_System_Error)
+   is
+   begin
+      Self.Fail_Next := True;
+      Self.Fail_Error := Error;
+   end Set_Fail_Next;
+
+   procedure Clear_Files
+     (Self : in out Mock_File_System_Provider)
+   is
+   begin
+      Self.Files.Clear;
+   end Clear_Files;
+
+   function Get_Call_Count
+     (Self : Mock_File_System_Provider) return Natural is (Self.Call_Count);
+
+   procedure Reset_Call_Count
+     (Self : in out Mock_File_System_Provider)
+   is
+   begin
+      Self.Call_Count := 0;
+   end Reset_Call_Count;
+
+--   ==========================================================================
+--   Interface Implementation
+--   ==========================================================================
+
+   overriding function Exists
+     (Self : Mock_File_System_Provider;
+      Path : String) return Boolean_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+--  Note: We can't modify Fail_Next since Self is 'in' mode
+--  This is a design limitation for stateful mocks with failure simulation
+         return Boolean_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         return Boolean_Result.Ok (Self.Files.Element (Path).Exists);
+      else
+         return Boolean_Result.Ok (False);
+      end if;
+   end Exists;
+
+   overriding function Is_Directory
+     (Self : Mock_File_System_Provider;
+      Path : String) return Boolean_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return Boolean_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         return Boolean_Result.Ok (Self.Files.Element (Path).Is_Dir);
+      else
+         return Boolean_Result.Ok (False);
+      end if;
+   end Is_Directory;
+
+   overriding function Is_Regular_File
+     (Self : Mock_File_System_Provider;
+      Path : String) return Boolean_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return Boolean_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         return Boolean_Result.Ok (Self.Files.Element (Path).Is_File);
+      else
+         return Boolean_Result.Ok (False);
+      end if;
+   end Is_Regular_File;
+
+   overriding function Get_Extension
+     (Self : Mock_File_System_Provider;
+      Path : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         return String_Result.Ok (Self.Files.Element (Path).Extension);
+      else
+--  Extract from path
+         declare
+            Last_Dot : constant Natural :=
+               Ada.Strings.Fixed.Index (Path, "" & Self.Extension_Separator, Ada.Strings.Backward);
+         begin
+            if Last_Dot > 0 and Last_Dot < Path'Last then
+               return String_Result.Ok (To_Unbounded_String (Path (Last_Dot .. Path'Last)));
+            else
+               return String_Result.Ok (Null_Unbounded_String);
+            end if;
+         end;
+      end if;
+   end Get_Extension;
+
+   overriding function Get_Base_Name
+     (Self : Mock_File_System_Provider;
+      Path : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         return String_Result.Ok (Self.Files.Element (Path).Base_Name);
+      else
+--  Extract from path
+         declare
+            Last_Sep : constant Natural :=
+               Ada.Strings.Fixed.Index (Path, "" & Self.Path_Separator, Ada.Strings.Backward);
+         begin
+            if Last_Sep > 0 and Last_Sep < Path'Last then
+               return String_Result.Ok (To_Unbounded_String (Path (Last_Sep + 1 .. Path'Last)));
+            else
+               return String_Result.Ok (To_Unbounded_String (Path));
+            end if;
+         end;
+      end if;
+   end Get_Base_Name;
+
+   overriding function Get_Directory_Name
+     (Self : Mock_File_System_Provider;
+      Path : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         return String_Result.Ok (Self.Files.Element (Path).Directory);
+      else
+--  Extract from path
+         declare
+            Last_Sep : constant Natural :=
+               Ada.Strings.Fixed.Index (Path, "" & Self.Path_Separator, Ada.Strings.Backward);
+         begin
+            if Last_Sep > 0 then
+               return String_Result.Ok (To_Unbounded_String (Path (Path'First .. Last_Sep - 1)));
+            else
+               return String_Result.Ok (Null_Unbounded_String);
+            end if;
+         end;
+      end if;
+   end Get_Directory_Name;
+
+   overriding function Compose_Path
+     (Self      : Mock_File_System_Provider;
+      Directory : String;
+      Name      : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+--  Simple path composition
+      if Directory'Length > 0 and then Directory (Directory'Last) = Self.Path_Separator then
+         return String_Result.Ok (To_Unbounded_String (Directory & Name));
+      else
+         return String_Result.Ok (To_Unbounded_String (Directory & Self.Path_Separator & Name));
+      end if;
+   end Compose_Path;
+
+   overriding function With_Extension
+     (Self      : Mock_File_System_Provider;
+      Path      : String;
+      Extension : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+--  Remove existing extension
+      declare
+         Last_Dot : constant Natural :=
+            Ada.Strings.Fixed.Index (Path, "" & Self.Extension_Separator, Ada.Strings.Backward);
+         Base_Path : constant String :=
+            (if Last_Dot > 0 then Path (Path'First .. Last_Dot - 1) else Path);
+      begin
+         if Extension'Length > 0 and then Extension (Extension'First) = Self.Extension_Separator then
+            return String_Result.Ok (To_Unbounded_String (Base_Path & Extension));
+         elsif Extension'Length > 0 then
+            return String_Result.Ok (To_Unbounded_String (Base_Path & Self.Extension_Separator & Extension));
+         else
+            return String_Result.Ok (To_Unbounded_String (Base_Path));
+         end if;
+      end;
+   end With_Extension;
+
+   overriding function Normalize_Path
+     (Self : Mock_File_System_Provider;
+      Path : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+--  Simple normalization - just return the path
+      return String_Result.Ok (To_Unbounded_String (Path));
+   end Normalize_Path;
+
+   overriding function Get_Absolute_Path
+     (Self : Mock_File_System_Provider;
+      Path : String) return String_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return String_Result.Err (Self.Fail_Error);
+      end if;
+
+--  Simple absolute path - prepend root if needed
+      if Path'Length > 0 and then Path (Path'First) = Self.Path_Separator then
+         return String_Result.Ok (To_Unbounded_String (Path));
+      else
+         return String_Result.Ok (To_Unbounded_String (Self.Path_Separator & Path));
+      end if;
+   end Get_Absolute_Path;
+
+   overriding function Get_File_Size
+     (Self : Mock_File_System_Provider;
+      Path : String) return Natural_Result.Result
+   is
+   begin
+      Increment_Counter (Self);
+
+      if Self.Fail_Next then
+         return Natural_Result.Err (Self.Fail_Error);
+      end if;
+
+      if Self.Files.Contains (Path) then
+         declare
+            Entry_Val : constant Mock_File_Entry := Self.Files.Element (Path);
+         begin
+            if Entry_Val.Is_File then
+               return Natural_Result.Ok (Entry_Val.Size);
+            else
+               return Natural_Result.Err
+                 (Make_File_System_Error
+                    (Kind    => Invalid_Path,
+                     Message => "Path is not a regular file",
+                     Path    => Path));
+            end if;
+         end;
+      else
+         return Natural_Result.Err
+           (Make_File_System_Error
+              (Kind    => File_Not_Found,
+               Message => "File not found",
+               Path    => Path));
+      end if;
+   end Get_File_Size;
+
+end Abohlib.Test.Mocks.File_System;

@@ -1,0 +1,330 @@
+--   =============================================================================
+--   Test_Result_Simple - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--
+--   Purpose:
+--     Simple unit tests for the Result<T,E> pattern using current APIs
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Calendar;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Domain.Result;
+with Abohlib.Core.Domain.Errors;
+
+package body Test_Result_Simple is
+
+   use Abohlib.Core.Domain.Errors;
+
+--   ==========================================================================
+--   Test Types Setup
+--   ==========================================================================
+
+--  Simple test error type
+   type Test_Error_Kind is (Validation_Error, Processing_Error);
+
+   type Simple_Error is record
+      Kind    : Test_Error_Kind;
+      Message : Unbounded_String;
+   end record;
+
+--  Test Result instantiation
+   package Integer_Result is new Abohlib.Core.Domain.Result.Result_Package
+     (Ok_Type  => Integer,
+      Err_Type => Simple_Error);
+
+--   ==========================================================================
+--   Helper Functions
+--   ==========================================================================
+
+   function Make_Error (Kind : Test_Error_Kind; Msg : String) return Simple_Error is
+     (Kind => Kind, Message => To_Unbounded_String (Msg));
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Ok_Creation return Void_Result.Result is
+      Result : constant Integer_Result.Result := Integer_Result.Ok (42);
+   begin
+--  Verify Is_Ok
+      if not Result.Is_Ok then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Ok result should return Is_Ok = True"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Ok_Creation")
+         ));
+      end if;
+
+--  Verify not Is_Err
+      if Result.Is_Err then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Ok result should return Is_Err = False"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Ok_Creation")
+         ));
+      end if;
+
+--  Verify value can be extracted
+      if Result.Get_Ok /= 42 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Get_Ok should return correct value"),
+            Details     => To_Unbounded_String ("Expected: 42, Got: " & Result.Get_Ok'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Ok_Creation")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Ok_Creation;
+
+   function Test_Err_Creation return Void_Result.Result is
+      Error : constant Simple_Error := Make_Error (Validation_Error, "Test error");
+      Result : constant Integer_Result.Result := Integer_Result.Err (Error);
+   begin
+--  Verify Is_Err
+      if not Result.Is_Err then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Err result should return Is_Err = True"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Err_Creation")
+         ));
+      end if;
+
+--  Verify not Is_Ok
+      if Result.Is_Ok then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Err result should return Is_Ok = False"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Err_Creation")
+         ));
+      end if;
+
+--  Verify error can be extracted
+      declare
+         Retrieved_Error : constant Simple_Error := Result.Get_Err;
+      begin
+         if Retrieved_Error.Kind /= Validation_Error then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Err should return correct error"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Err_Creation")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Err_Creation;
+
+   function Test_Get_Ok_Or return Void_Result.Result is
+      Ok_Result : constant Integer_Result.Result := Integer_Result.Ok (100);
+      Err_Result : constant Integer_Result.Result :=
+         Integer_Result.Err (Make_Error (Processing_Error, "Failed"));
+   begin
+--  Test Get_Ok_Or on Ok result
+      if Ok_Result.Get_Ok_Or (999) /= 100 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Get_Ok_Or should return Ok value"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Get_Ok_Or")
+         ));
+      end if;
+
+--  Test Get_Ok_Or on Err result (should return default)
+      if Err_Result.Get_Ok_Or (999) /= 999 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Get_Ok_Or should return default value for Err"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Get_Ok_Or")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Get_Ok_Or;
+
+   function Test_Get_Err_Or return Void_Result.Result is
+      Ok_Result : constant Integer_Result.Result := Integer_Result.Ok (100);
+      Err_Result : constant Integer_Result.Result :=
+         Integer_Result.Err (Make_Error (Processing_Error, "Failed"));
+      Default_Error : constant Simple_Error := Make_Error (Validation_Error, "Default");
+   begin
+--  Test Get_Err_Or on Ok result (should return default)
+      declare
+         Retrieved_Error : constant Simple_Error := Ok_Result.Get_Err_Or (Default_Error);
+      begin
+         if Retrieved_Error.Kind /= Validation_Error then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Err_Or should return default error for Ok"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Err_Or")
+            ));
+         end if;
+      end;
+
+--  Test Get_Err_Or on Err result (should return actual error)
+      declare
+         Retrieved_Error : constant Simple_Error := Err_Result.Get_Err_Or (Default_Error);
+      begin
+         if Retrieved_Error.Kind /= Processing_Error then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Get_Err_Or should return actual error for Err"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Get_Err_Or")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Get_Err_Or;
+
+   function Test_Result_Pattern_Matching return Void_Result.Result is
+      Ok_Result : constant Integer_Result.Result := Integer_Result.Ok (50);
+
+--  Pattern matching functions
+      function Handle_Ok (V : Integer) return Integer is (V * 2);
+      function Handle_Err (E : Simple_Error) return Integer is (-1);
+
+--  Instantiate Match function
+      function Match_To_Integer is new Integer_Result.Match (Integer);
+   begin
+--  Test pattern matching on Ok
+      declare
+         Value : constant Integer := Match_To_Integer (Ok_Result, Handle_Ok'Access, Handle_Err'Access);
+      begin
+         if Value /= 100 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Pattern matching should handle Ok correctly"),
+               Details     => To_Unbounded_String ("Expected: 100, Got: " & Value'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Result_Pattern_Matching")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Result_Pattern_Matching;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 5);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Func : access function return Void_Result.Result)
+      is
+         Start_Time : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+         Result     : constant Void_Result.Result := Func.all;
+         End_Time   : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+         Duration   : constant Standard.Duration := Ada.Calendar."-" (End_Time, Start_Time);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Test_Result'(
+               Name           => To_Unbounded_String (Name),
+               Status         => Passed,
+               Message        => To_Unbounded_String ("Test passed"),
+               Elapsed_Time   => Duration,
+               Line_Number    => 0,
+               Correlation_ID => Null_Unbounded_String
+            );
+         else
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => Duration,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => Null_Unbounded_String
+               );
+            end;
+         end if;
+
+         Print_Test_Result (Tests (Index), Output);
+         Index := Index + 1;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("");
+      Output.Write_Line ("=== Running Result Pattern Unit Tests ===");
+      Output.Write_Line ("");
+
+--  Run all tests
+      Add_Test_Result ("Test_Ok_Creation", Test_Ok_Creation'Access);
+      Add_Test_Result ("Test_Err_Creation", Test_Err_Creation'Access);
+      Add_Test_Result ("Test_Get_Ok_Or", Test_Get_Ok_Or'Access);
+      Add_Test_Result ("Test_Get_Err_Or", Test_Get_Err_Or'Access);
+      Add_Test_Result ("Test_Result_Pattern_Matching", Test_Result_Pattern_Matching'Access);
+
+--  Generate summary
+      declare
+         Stats : Test_Statistics := (others => <>);
+      begin
+         for Test of Tests loop
+            Stats.Total_Tests := Stats.Total_Tests + 1;
+            case Test.Status is
+               when Passed =>
+                  Stats.Passed_Tests := Stats.Passed_Tests + 1;
+               when Failed =>
+                  Stats.Failed_Tests := Stats.Failed_Tests + 1;
+               when Skipped =>
+                  Stats.Skipped_Tests := Stats.Skipped_Tests + 1;
+               when Error =>
+                  Stats.Error_Tests := Stats.Error_Tests + 1;
+            end case;
+            Stats.Total_Duration := Stats.Total_Duration + Test.Elapsed_Time;
+         end loop;
+
+         Output.Write_Line ("");
+         Output.Write_Line ("============================================================");
+         Output.Write_Line ("Test Suite: Result Pattern Unit Tests");
+         Output.Write_Line ("============================================================");
+         Print_Test_Statistics (Stats, Output);
+
+         if Stats.Failed_Tests = 0 and Stats.Error_Tests = 0 then
+            Output.Write_Line ("Result: ALL TESTS PASSED");
+            return Test_Stats_Result.Ok (Stats);
+         else
+            Output.Write_Line ("Result: SOME TESTS FAILED");
+            return Test_Stats_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Some tests failed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Result Pattern Tests")
+            ));
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Result_Simple;

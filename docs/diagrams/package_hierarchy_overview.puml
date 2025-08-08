@@ -1,0 +1,163 @@
+@startuml Package_Hierarchy_Overview
+!theme aws-orange
+title Abohlib Package Hierarchy\nComprehensive Package Structure
+
+!define CORE_COLOR #E8F4F8
+!define DOMAIN_COLOR #E1F0FF
+!define APP_COLOR #FFF2E8
+!define INFRA_COLOR #F0F8E8
+!define UTIL_COLOR #FFE8E8
+
+package "Abohlib" as root <<CORE_COLOR>> {
+  
+  package "Core" as core <<CORE_COLOR>> {
+    
+    package "Domain" as domain <<DOMAIN_COLOR>> {
+      package "Aggregates" {
+        [Generic_Aggregate_Root]
+      }
+      
+      package "Contracts" {
+        [Validatable]
+        [Auditable]
+      }
+      
+      package "Entities" {
+        [Generic_Entity]
+      }
+      
+      package "Errors" {
+        [Result<T,E>]
+        [Domain_Error_Types]
+      }
+      
+      package "Events" {
+        [Domain_Event]
+        [Event_Dispatcher]
+      }
+      
+      package "Math" {
+        [Percentage_Type]
+        [Calculate_Percentage]
+        [Calculate_Ratio]
+      }
+      
+      package "Repositories" {
+        [Generic_Repository]
+        [ACID_Repository]
+        [Unit_Of_Work]
+      }
+      
+      package "Services" {
+        package "Pipeline" {
+          [Generic_Stage]
+          [Stage_Interface]
+        }
+        [File_Path_Service]
+      }
+      
+      package "Types" {
+        [Strong_Types]
+        [Time_Types]
+        [Byte_Types]
+        [String_Types]
+      }
+      
+      package "Utilities" {
+        [Byte_Formatter]
+        [File_Size_Formatter]
+        [Generic_Object_Pool]
+        [Safe_Call]
+        [State_Machine]
+        
+        package "Concurrent" {
+          [Buffer_Manager]
+          [Cancellation_Source]
+          [Lock_Free_Queue]
+          [Lock_Free_Ring_Buffer]
+          [Buffer_State_Machine]
+        }
+        
+        package "IO" {
+          [Generic_Buffered]
+          [Generic_Zero_Copy]
+        }
+        
+        package "System" {
+          [Signal_Handler]
+        }
+      }
+      
+      package "Value_Objects" {
+        [Constrained_Strings]
+        [File_Path]
+        [Optional<T>]
+        [Type_Safe_Generic_ID]
+      }
+    }
+    
+    package "Application" as application <<APP_COLOR>> {
+      package "Errors" {
+        [Application_Errors]
+      }
+      
+      package "Use_Cases" {
+        [Generic_Simple_Validator]
+      }
+      
+      [Unit_Of_Work_Adapter]
+    }
+  }
+  
+  package "Infrastructure" as infrastructure <<INFRA_COLOR>> {
+    package "Adapters" {
+      [POSIX_File_System]
+      [POSIX_System_Info]
+    }
+    
+    package "Errors" {
+      [Infrastructure_Errors]
+    }
+    
+    package "Logging" {
+      [Logger_Interface]
+      [Console_Logger]
+    }
+    
+    package "Resilience" {
+      [Generic_Retry_Handler]
+      [Circuit_Breaker]
+      [Global_Circuit_Handler]
+    }
+    
+    package "Testing" {
+      [Test_Framework]
+      [Property_Testing]
+      [Mutation_Testing]
+      [Test_Resources]
+    }
+  }
+}
+
+note right of domain
+  **Domain Layer**
+  Pure business logic
+  No external dependencies
+  Strong type safety
+end note
+
+note bottom of infrastructure
+  **Infrastructure Layer**
+  External system integration
+  Implements domain ports
+  Testing utilities
+end note
+
+note left of application
+  **Application Layer**
+  Use case orchestration
+  Transaction boundaries
+  Input validation
+end note
+
+@enduml

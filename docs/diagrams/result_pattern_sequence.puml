@@ -1,0 +1,210 @@
+@startuml Result_Pattern_Sequence
+!theme aws-orange
+title Result Pattern Flow - Error Handling Without Exceptions
+
+participant "Client Code" as client
+participant "Domain Service" as service
+participant "Repository" as repo
+participant "File System" as fs
+participant "Result<T,E>" as result
+
+== Successful Operation ==
+
+client -> service : call operation()
+activate service
+
+service -> repo : find_entity(id)
+activate repo
+
+repo -> fs : read_file(path)
+activate fs
+fs --> repo : file_content
+deactivate fs
+
+repo -> result : Ok(entity)
+activate result
+result --> repo : Result<Entity, Error>
+deactivate result
+
+repo --> service : Result<Entity, Error>
+deactivate repo
+
+service -> result : Is_Ok()
+activate result
+result --> service : true
+deactivate result
+
+service -> result : Get_Ok()
+activate result
+result --> service : entity
+deactivate result
+
+service -> service : process_entity(entity)
+
+service -> result : Ok(processed_result)
+activate result
+result --> service : Result<ProcessedData, Error>
+deactivate result
+
+service --> client : Result<ProcessedData, Error>
+deactivate service
+
+client -> result : Is_Ok()
+activate result
+result --> client : true
+deactivate result
+
+client -> result : Get_Ok()
+activate result
+result --> client : processed_data
+deactivate result
+
+== Error Handling Flow ==
+
+client -> service : call operation()
+activate service
+
+service -> repo : find_entity(invalid_id)
+activate repo
+
+repo -> fs : read_file(invalid_path)
+activate fs
+fs --> repo : file_not_found_error
+deactivate fs
+
+repo -> result : Err("Entity not found")
+activate result
+result --> repo : Result<Entity, Error>
+deactivate result
+
+repo --> service : Result<Entity, Error>
+deactivate repo
+
+service -> result : Is_Err()
+activate result
+result --> service : true
+deactivate result
+
+service -> result : Get_Err()
+activate result
+result --> service : error_message
+deactivate result
+
+service -> result : Err("Failed to process: " + error_message)
+activate result
+result --> service : Result<ProcessedData, Error>
+deactivate result
+
+service --> client : Result<ProcessedData, Error>
+deactivate service
+
+client -> result : Is_Err()
+activate result
+result --> client : true
+deactivate result
+
+client -> result : Get_Err()
+activate result
+result --> client : error_message
+deactivate result
+
+client -> client : handle_error(error_message)
+
+== Pattern Matching Example ==
+
+client -> service : call operation()
+activate service
+
+service --> client : Result<Data, Error>
+deactivate service
+
+client -> result : Match(\n  Ok_Case: process_success,\n  Err_Case: handle_error\n)
+activate result
+
+alt Result is Ok
+  result -> client : process_success(data)
+else Result is Err
+  result -> client : handle_error(error)
+end
+
+result --> client : final_result
+deactivate result
+
+== Functional Composition Example ==
+
+client -> service : get_user_data(id)
+activate service
+
+service -> repo : find_user(id)
+activate repo
+repo --> service : Result<User, Error>
+deactivate repo
+
+note over service
+Instead of nested if-then:
+  if find_result.Is_Ok then
+    validate_result := validate(user)
+    if validate_result.Is_Ok then
+      enriched := enrich(user)
+      ...
+    end if
+  end if
+  
+Use functional composition:
+  find_user(id)
+    .And_Then(validate)
+    .And_Then(enrich)
+    .Map(format_for_display)
+end note
+
+service -> result : And_Then(validate_user)
+activate result
+result --> service : Result<ValidUser, Error>
+deactivate result
+
+service -> result : And_Then(enrich_user)
+activate result
+result --> service : Result<EnrichedUser, Error>
+deactivate result
+
+service -> result : Map(format_for_display)
+activate result
+result --> service : Result<DisplayData, Error>
+deactivate result
+
+service --> client : Result<DisplayData, Error>
+deactivate service
+
+note over client, result
+**KEY BENEFITS:**
+1. **No Exceptions**: All errors are explicit in the type system
+2. **Composability**: Results can be chained and transformed
+3. **Type Safety**: Compile-time guarantee that errors are handled
+4. **Performance**: No exception unwinding overhead
+5. **Clarity**: Error paths are visible in the code
+end note
+
+note over service
+**DOMAIN BOUNDARY:**
+Services never let exceptions
+escape. All external errors
+are caught and converted to
+Result types.
+end note
+
+note over result
+**RESULT<T,E> PATTERN:**
+- Ok(value): Success case
+- Err(error): Failure case
+- Is_Ok() / Is_Err(): Check state
+- Get_Ok() / Get_Err(): Extract values
+- Match(): Pattern matching
+
+**NEW FUNCTIONAL OPERATIONS:**
+- Map(): Transform Ok values
+- Map_Err(): Transform Err values
+- And_Then(): Chain operations (flatMap)
+- Or_Else(): Provide alternatives
+end note
+
+@enduml

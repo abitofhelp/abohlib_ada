@@ -1,0 +1,339 @@
+--  =============================================================================
+--  Test_Test_Resources - Unit test implementation
+--  =============================================================================
+--  Copyright (c) 2025 A Bit of Help, Inc.
+--  SPDX-License-Identifier: MIT
+--  =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Directories;
+with Abohlib.Infrastructure.Testing.Test_Resources;
+
+package body Test_Resources is
+
+   use Abohlib.Infrastructure.Testing.Test_Resources;
+   use type Ada.Directories.File_Kind;
+
+--  ==========================================================================
+--  Test Functions
+--  ==========================================================================
+
+   function Test_Track_File return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Result is
+      Tracker : Resource_Tracker;
+      Path : constant String := "/tmp/test_track_file.txt";
+   begin
+      Track_File (Tracker, Path);
+
+      if Resource_Count (Tracker) /= 1 then
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Resource count should be 1"),
+            Details     => To_Unbounded_String
+               ("Got: " & Resource_Count (Tracker)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Track_File")
+         ));
+      end if;
+
+      return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Ok (True);
+   end Test_Track_File;
+
+   function Test_Create_Temp_File return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Result is
+      Tracker : Resource_Tracker;
+      Path_Result : constant String_Result.Result := Create_Temp_File (Tracker);
+   begin
+      if not String_Result.Is_Ok (Path_Result) then
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Failed to create temp file"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Temp_File")
+         ));
+      end if;
+
+      declare
+         Path : constant String := To_String (String_Result.Get_Ok (Path_Result));
+      begin
+         --  Verify file exists
+         if not Ada.Directories.Exists (Path) then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Temp file was not created"),
+               Details     => To_Unbounded_String ("Path: " & Path),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Create_Temp_File")
+            ));
+         end if;
+
+         --  Verify it's tracked
+         if Resource_Count (Tracker) /= 1 then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("File not tracked"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Create_Temp_File")
+            ));
+         end if;
+
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Ok (True);
+      end;  --  Path declare block
+   end Test_Create_Temp_File;
+
+   function Test_Create_Temp_Directory return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Result is
+      Tracker : Resource_Tracker;
+      Path_Result : constant String_Result.Result := Create_Temp_Directory (Tracker);
+   begin
+      if not String_Result.Is_Ok (Path_Result) then
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Failed to create temp directory"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Temp_Directory")
+         ));
+      end if;
+
+      declare
+         Path : constant String := To_String (String_Result.Get_Ok (Path_Result));
+      begin
+         --  Verify directory exists
+         if not Ada.Directories.Exists (Path) then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Temp directory was not created"),
+               Details     => To_Unbounded_String ("Path: " & Path),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Create_Temp_Directory")
+            ));
+         end if;
+
+         --  Verify it's a directory
+         if Ada.Directories.Kind (Path) /= Ada.Directories.Directory then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Created path is not a directory"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Create_Temp_Directory")
+            ));
+         end if;
+
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Ok (True);
+      end;  --  Path declare block
+   end Test_Create_Temp_Directory;
+
+   function Test_Manual_Cleanup return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Result is
+      Tracker : Resource_Tracker;
+      File_Result : constant String_Result.Result := Create_Temp_File (Tracker);
+      Dir_Result : constant String_Result.Result := Create_Temp_Directory (Tracker);
+   begin
+      if not String_Result.Is_Ok (File_Result) or not String_Result.Is_Ok (Dir_Result) then
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Failed to create temp resources"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Manual_Cleanup")
+         ));
+      end if;
+
+      declare
+         File_Path : constant String := To_String (String_Result.Get_Ok (File_Result));
+         Dir_Path : constant String := To_String (String_Result.Get_Ok (Dir_Result));
+      begin
+         --  Verify resources exist
+         if not Ada.Directories.Exists (File_Path) or else
+            not Ada.Directories.Exists (Dir_Path) then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Resources not created"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Manual_Cleanup")
+            ));
+         end if;
+
+         --  Manual cleanup
+         declare
+            Cleanup_Result : constant Abohlib.Infrastructure.Testing.Test_Resources.Void_Result.Result :=
+               Cleanup (Tracker);
+            pragma Unreferenced (Cleanup_Result);
+         begin
+            null; -- We don't check the result in this test
+         end;
+
+         --  Verify resources were cleaned
+         if Ada.Directories.Exists (File_Path) then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("File not cleaned up"),
+               Details     => To_Unbounded_String ("Path: " & File_Path),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Manual_Cleanup")
+            ));
+         end if;
+
+         if Ada.Directories.Exists (Dir_Path) then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Directory not cleaned up"),
+               Details     => To_Unbounded_String ("Path: " & Dir_Path),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Manual_Cleanup")
+            ));
+         end if;
+
+         --  Verify count is zero
+         if Resource_Count (Tracker) /= 0 then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Resource count should be 0 after cleanup"),
+               Details     => To_Unbounded_String
+                  ("Got: " & Resource_Count (Tracker)'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Manual_Cleanup")
+            ));
+         end if;
+
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Ok (True);
+      end;  --  File_Path/Dir_Path declare block
+   end Test_Manual_Cleanup;
+
+   function Test_Auto_Cleanup return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Result is
+      File_Path : Unbounded_String;
+      Dir_Path : Unbounded_String;
+   begin
+      --  Create resources in nested scope
+      declare
+         Tracker : Resource_Tracker;
+      begin
+         declare
+            File_Result : constant String_Result.Result := Create_Temp_File (Tracker);
+            Dir_Result : constant String_Result.Result := Create_Temp_Directory (Tracker);
+         begin
+            if not String_Result.Is_Ok (File_Result) or not String_Result.Is_Ok (Dir_Result) then
+               return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Failed to create temp resources"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Auto_Cleanup")
+               ));
+            end if;
+
+            File_Path := String_Result.Get_Ok (File_Result);
+            Dir_Path := String_Result.Get_Ok (Dir_Result);
+         end;
+
+         --  Verify they exist
+         if not Ada.Directories.Exists (To_String (File_Path)) or else
+            not Ada.Directories.Exists (To_String (Dir_Path)) then
+            return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Resources not created"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Auto_Cleanup")
+            ));
+         end if;
+      end;
+      --  Tracker goes out of scope here
+
+      --  Verify auto cleanup happened
+      if Ada.Directories.Exists (To_String (File_Path)) then
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("File not auto-cleaned"),
+            Details     => File_Path,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Auto_Cleanup")
+         ));
+      end if;
+
+      if Ada.Directories.Exists (To_String (Dir_Path)) then
+         return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Directory not auto-cleaned"),
+            Details     => Dir_Path,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Auto_Cleanup")
+         ));
+      end if;
+
+      return Abohlib.Infrastructure.Testing.Test_Framework.Void_Result.Ok (True);
+   end Test_Auto_Cleanup;
+
+--  ==========================================================================
+--  Test Runner
+--  ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Test_Count : constant := 5;
+      Tests : Test_Results_Array (1 .. Test_Count);
+      Index : Positive := 1;
+
+      procedure Run_Single_Test
+        (Name : String;
+         Func : Test_Function_Access) is
+         Result : constant Test_Result_Pkg.Result := Run_Test (Name, Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => 0.0,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => To_Unbounded_String ("TEST-" & Name)
+               );
+               Print_Test_Result (Tests (Index), Output);
+               Index := Index + 1;
+            end;
+         end if;
+      end Run_Single_Test;
+
+   begin
+      Output.Write_Line ("=== Running Test Resources Tests ===");
+      Output.Write_Line ("");
+
+      Run_Single_Test ("Track File", Test_Track_File'Access);
+      Run_Single_Test ("Create Temp File", Test_Create_Temp_File'Access);
+      Run_Single_Test ("Create Temp Directory", Test_Create_Temp_Directory'Access);
+      Run_Single_Test ("Manual Cleanup", Test_Manual_Cleanup'Access);
+      Run_Single_Test ("Auto Cleanup", Test_Auto_Cleanup'Access);
+
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Test Resources", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Test Resources Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Resources;
+
+pragma Warnings (On, "subprogram body has no previous spec");

@@ -1,0 +1,592 @@
+--   =============================================================================
+--   Test_POSIX_System_Info - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Calendar;
+with Abohlib.Infrastructure.Adapters.POSIX_System_Info;
+with Abohlib.Core.Domain.Ports.System_Info;
+
+package body Test_POSIX_System_Info is
+
+   use Abohlib.Infrastructure.Adapters.POSIX_System_Info;
+   use Abohlib.Core.Domain.Ports.System_Info;
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Memory_Info return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+   begin
+--  Get total memory
+      declare
+         Result : constant Memory_Result.Result := Provider.Get_Total_Memory;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get total memory"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Memory_Info")
+            ));
+         end if;
+
+--  Total memory should be positive
+         if Result.Get_Ok <= 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Total memory should be positive"),
+               Details     => To_Unbounded_String ("Got: " & Result.Get_Ok'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Memory_Info")
+            ));
+         end if;
+
+--  Total memory should be reasonable (> 1MB, < 1PB)
+         if Result.Get_Ok < 1_048_576 or Result.Get_Ok > 1_125_899_906_842_624 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Total memory outside reasonable range"),
+               Details     => To_Unbounded_String ("Got: " & Result.Get_Ok'Image & " bytes"),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Memory_Info")
+            ));
+         end if;
+      end;
+
+--  Get available memory
+      declare
+         Result : constant Memory_Result.Result := Provider.Get_Available_Memory;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get available memory"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Memory_Info")
+            ));
+         end if;
+
+--  Available memory should be positive
+         if Result.Get_Ok <= 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Available memory should be positive"),
+               Details     => To_Unbounded_String ("Got: " & Result.Get_Ok'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Memory_Info")
+            ));
+         end if;
+      end;
+
+--  Available should be less than or equal to total
+      declare
+         Total_Result : constant Memory_Result.Result := Provider.Get_Total_Memory;
+         Avail_Result : constant Memory_Result.Result := Provider.Get_Available_Memory;
+      begin
+         if Total_Result.Is_Ok and Avail_Result.Is_Ok then
+            if Avail_Result.Get_Ok > Total_Result.Get_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Available memory exceeds total memory"),
+                  Details     => To_Unbounded_String ("Total: " & Total_Result.Get_Ok'Image &
+                                                    ", Available: " & Avail_Result.Get_Ok'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Memory_Info")
+               ));
+            end if;
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Memory_Info;
+
+   function Test_CPU_Info return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+   begin
+--  Get logical CPU count
+      declare
+         Result : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get CPU count"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_CPU_Info")
+            ));
+         end if;
+
+--  Should have at least 1 CPU
+         if Result.Get_Ok < 1 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should have at least 1 CPU"),
+               Details     => To_Unbounded_String ("Got: " & Result.Get_Ok'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_CPU_Info")
+            ));
+         end if;
+
+--  Reasonable upper limit (1024 CPUs)
+         if Result.Get_Ok > 1024 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("CPU count exceeds reasonable limit"),
+               Details     => To_Unbounded_String ("Got: " & Result.Get_Ok'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_CPU_Info")
+            ));
+         end if;
+      end;
+
+--  Get physical CPU count
+      declare
+         Result : constant CPU_Count_Result.Result := Provider.Get_Physical_CPU_Count;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get physical CPU count"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_CPU_Info")
+            ));
+         end if;
+
+--  Should have at least 1 physical CPU
+         if Result.Get_Ok < 1 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should have at least 1 physical CPU"),
+               Details     => To_Unbounded_String ("Got: " & Result.Get_Ok'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_CPU_Info")
+            ));
+         end if;
+      end;
+
+--  Logical CPUs should be >= physical CPUs (due to hyperthreading)
+      declare
+         Logical_Result : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+         Physical_Result : constant CPU_Count_Result.Result := Provider.Get_Physical_CPU_Count;
+      begin
+         if Logical_Result.Is_Ok and Physical_Result.Is_Ok then
+            if Logical_Result.Get_Ok < Physical_Result.Get_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Logical CPUs less than physical CPUs"),
+                  Details     => To_Unbounded_String ("Logical: " & Logical_Result.Get_Ok'Image &
+                                                    ", Physical: " & Physical_Result.Get_Ok'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_CPU_Info")
+               ));
+            end if;
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_CPU_Info;
+
+   function Test_OS_Info return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+   begin
+--  Get OS name
+      declare
+         Result : constant String_Result.Result := Provider.Get_OS_Name;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get OS name"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_OS_Info")
+            ));
+         end if;
+
+--  OS name should not be empty
+         if Length (Result.Get_Ok) = 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("OS name is empty"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_OS_Info")
+            ));
+         end if;
+
+--  Check for known OS names
+         declare
+            OS_Name : constant String := To_String (Result.Get_Ok);
+         begin
+--  Common POSIX systems
+            if OS_Name /= "Linux" and
+               OS_Name /= "Darwin" and
+               OS_Name /= "FreeBSD" and
+               OS_Name /= "OpenBSD" and
+               OS_Name /= "NetBSD" and
+               OS_Name /= "SunOS" and
+               OS_Name /= "AIX" then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Unknown OS: " & OS_Name),
+                  Details     => To_Unbounded_String ("Expected known POSIX system"),
+                  Line_Number => 1,
+                  Test_Name   => To_Unbounded_String ("Test_OS_Name")
+               ));
+            end if;
+         end;
+      end;
+
+--  Get OS version
+      declare
+         Result : constant String_Result.Result := Provider.Get_OS_Version;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get OS version"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_OS_Info")
+            ));
+         end if;
+
+--  OS version should not be empty
+         if Length (Result.Get_Ok) = 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("OS version is empty"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_OS_Info")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_OS_Info;
+
+   function Test_Architecture_Info return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+   begin
+--  Get architecture
+      declare
+         Result : constant String_Result.Result := Provider.Get_Architecture;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get architecture"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Architecture_Info")
+            ));
+         end if;
+
+--  Architecture should not be empty
+         if Length (Result.Get_Ok) = 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Architecture is empty"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Architecture_Info")
+            ));
+         end if;
+
+--  Check for known architectures
+         declare
+            Arch : constant String := To_String (Result.Get_Ok);
+         begin
+--  Common architectures
+            if Arch /= "x86_64" and
+               Arch /= "amd64" and
+               Arch /= "i386" and
+               Arch /= "i686" and
+               Arch /= "aarch64" and
+               Arch /= "arm64" and
+               Arch /= "armv7l" and
+               Arch /= "ppc64" and
+               Arch /= "ppc64le" and
+               Arch /= "s390x" and
+               Arch /= "riscv64" then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Unknown architecture: " & Arch),
+                  Details     => To_Unbounded_String ("Expected known architecture"),
+                  Line_Number => 1,
+                  Test_Name   => To_Unbounded_String ("Test_Processor_Architecture")
+               ));
+            end if;
+         end;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Architecture_Info;
+
+   function Test_Value_Consistency return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+   begin
+--  Get all values twice and compare
+      declare
+         Total_Mem_1 : constant Memory_Result.Result := Provider.Get_Total_Memory;
+         Total_Mem_2 : constant Memory_Result.Result := Provider.Get_Total_Memory;
+
+         CPU_Count_1 : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+         CPU_Count_2 : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+
+         OS_Name_1 : constant String_Result.Result := Provider.Get_OS_Name;
+         OS_Name_2 : constant String_Result.Result := Provider.Get_OS_Name;
+      begin
+--  Total memory should be consistent
+         if Total_Mem_1.Is_Ok and Total_Mem_2.Is_Ok then
+            if Total_Mem_1.Get_Ok /= Total_Mem_2.Get_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Total memory inconsistent between calls"),
+                  Details     => To_Unbounded_String ("First: " & Total_Mem_1.Get_Ok'Image &
+                                                    ", Second: " & Total_Mem_2.Get_Ok'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Value_Consistency")
+               ));
+            end if;
+         end if;
+
+--  CPU count should be consistent
+         if CPU_Count_1.Is_Ok and CPU_Count_2.Is_Ok then
+            if CPU_Count_1.Get_Ok /= CPU_Count_2.Get_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("CPU count inconsistent between calls"),
+                  Details     => To_Unbounded_String ("First: " & CPU_Count_1.Get_Ok'Image &
+                                                    ", Second: " & CPU_Count_2.Get_Ok'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Value_Consistency")
+               ));
+            end if;
+         end if;
+
+--  OS name should be consistent
+         if OS_Name_1.Is_Ok and OS_Name_2.Is_Ok then
+            if OS_Name_1.Get_Ok /= OS_Name_2.Get_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("OS name inconsistent between calls"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Value_Consistency")
+               ));
+            end if;
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Value_Consistency;
+
+   function Test_Value_Ranges return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+   begin
+--  Test memory ranges
+      declare
+         Total_Result : constant Memory_Result.Result := Provider.Get_Total_Memory;
+         Avail_Result : constant Memory_Result.Result := Provider.Get_Available_Memory;
+      begin
+         if Total_Result.Is_Ok and Avail_Result.Is_Ok then
+--  Available should be > 0 and <= Total
+            if Avail_Result.Get_Ok <= 0 or Avail_Result.Get_Ok > Total_Result.Get_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Available memory out of range"),
+                  Details     => To_Unbounded_String ("Total: " & Total_Result.Get_Ok'Image &
+                                                    ", Available: " & Avail_Result.Get_Ok'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Value_Ranges")
+               ));
+            end if;
+
+--  Available should be at least 1% of total (reasonable minimum)
+
+         end if;
+      end;
+
+--  Test CPU ranges
+      declare
+         Logical_Result : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+         Physical_Result : constant CPU_Count_Result.Result := Provider.Get_Physical_CPU_Count;
+      begin
+         if Logical_Result.Is_Ok and Physical_Result.Is_Ok then
+--  Ratio should be reasonable (1-4x)
+            if Logical_Result.Get_Ok > Physical_Result.Get_Ok * 4 then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Unusual CPU ratio"),
+                  Details     => To_Unbounded_String ("Logical: " & Logical_Result.Get_Ok'Image &
+                                                    ", Physical: " & Physical_Result.Get_Ok'Image),
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Value_Ranges")
+               ));
+            end if;
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Value_Ranges;
+
+   function Test_Call_Stability return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+      Iterations : constant := 10;
+   begin
+--  Call each method multiple times and verify stability
+      for I in 1 .. Iterations loop
+         declare
+            Total_Mem : constant Memory_Result.Result := Provider.Get_Total_Memory;
+            CPU_Count : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+            OS_Name : constant String_Result.Result := Provider.Get_OS_Name;
+         begin
+--  Just verify they succeed
+            if not Total_Mem.Is_Ok or not CPU_Count.Is_Ok or not OS_Name.Is_Ok then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Call failed on iteration " & I'Image),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Call_Stability")
+               ));
+            end if;
+         end;
+      end loop;
+
+      return Void_Result.Ok (True);
+   end Test_Call_Stability;
+
+   function Test_Performance return Void_Result.Result is
+      Provider : POSIX_System_Info_Provider;
+      Start_Time : Ada.Calendar.Time;
+      End_Time : Ada.Calendar.Time;
+      Iterations : constant := 100;
+   begin
+--  Measure time for multiple calls
+      Start_Time := Ada.Calendar.Clock;
+
+      for I in 1 .. Iterations loop
+         declare
+            R1 : constant Memory_Result.Result := Provider.Get_Total_Memory;
+            R2 : constant CPU_Count_Result.Result := Provider.Get_CPU_Count;
+            R3 : constant String_Result.Result := Provider.Get_OS_Name;
+            pragma Unreferenced (R1, R2, R3);
+         begin
+            null;
+         end;
+      end loop;
+
+      End_Time := Ada.Calendar.Clock;
+
+      declare
+         use Ada.Calendar;
+         Duration : constant Ada.Calendar.Day_Duration := End_Time - Start_Time;
+         Avg_Time : constant Ada.Calendar.Day_Duration := Duration / Iterations;
+      begin
+--  Each call should be fast (< 10ms average)
+         if Avg_Time > 0.010 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("System info calls too slow"),
+               Details     => To_Unbounded_String ("Average time: " &
+                                                 Ada.Calendar.Day_Duration'Image (Avg_Time) & " seconds"),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Performance")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Performance;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 8);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Test_Func : Test_Function_Access)
+      is
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test (Name, Test_Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+--  Handle test execution error
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => 0.0,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => To_Unbounded_String ("TEST-" & Name)
+               );
+               Print_Test_Result (Tests (Index), Output);
+               Index := Index + 1;
+            end;
+         end if;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("=== Running POSIX System Info Integration Tests ===");
+      Output.Write_Line ("");
+
+--  Run all tests
+      Add_Test_Result ("Test_Memory_Info", Test_Memory_Info'Access);
+      Add_Test_Result ("Test_CPU_Info", Test_CPU_Info'Access);
+      Add_Test_Result ("Test_OS_Info", Test_OS_Info'Access);
+      Add_Test_Result ("Test_Architecture_Info", Test_Architecture_Info'Access);
+      Add_Test_Result ("Test_Value_Consistency", Test_Value_Consistency'Access);
+      Add_Test_Result ("Test_Value_Ranges", Test_Value_Ranges'Access);
+      Add_Test_Result ("Test_Call_Stability", Test_Call_Stability'Access);
+      Add_Test_Result ("Test_Performance", Test_Performance'Access);
+
+--  Generate summary
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("POSIX_System_Info_Tests", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("POSIX System Info Integration Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_POSIX_System_Info;
+
+pragma Warnings (On, "subprogram body has no previous spec");

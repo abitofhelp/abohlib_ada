@@ -1,0 +1,267 @@
+@startuml Domain_Model
+!theme aws-orange
+title Abohlib Domain Model - Core Domain Objects and Relationships
+
+!define VALUE_COLOR #E8F4F8
+!define ENTITY_COLOR #FFF2E8
+!define AGGREGATE_COLOR #F0F8E8
+!define SERVICE_COLOR #F8E8F8
+
+package "Value Objects" as values <<VALUE_COLOR>> {
+  class "Type_Safe_Generic_ID<T>" {
+    - ulid_value: ULID_Number
+    - has_prefix: Boolean
+    --
+    + New_ID(): ID
+    + From_String(s: String): Result<ID, Error>
+    + To_String(): String
+    + Timestamp(): Time
+    + "<"(other: ID): Boolean
+    + "="(other: ID): Boolean
+  }
+
+  class "Constrained_Strings" {
+    - value: Bounded_String
+    - constraints: Constraint_Set
+    --
+    + Create(value: String): Result<Constrained_String, Error>
+    + Value(): String
+    + Is_Valid(): Boolean
+  }
+
+  class "File_Path" {
+    - path: Bounded_String
+    - path_type: Path_Type
+    --
+    + Create(path: String): Result<File_Path, Error>
+    + To_String(): String
+    + Is_Absolute(): Boolean
+    + Parent(): Result<File_Path, Error>
+  }
+
+  class "Generic_Wrapper<T>" {
+    - wrapped_value: T
+    --
+    + Create(value: T): Generic_Wrapper
+    + Unwrap(): T
+    + Map<U>(func: T -> U): Generic_Wrapper<U>
+  }
+}
+
+package "Result Pattern" as results {
+  class "Result<Ok_Type, Err_Type>" {
+    - variant: Result_Variant
+    - ok_value: Ok_Type [when Ok]
+    - err_value: Err_Type [when Err]
+    --
+    + Ok(value: Ok_Type): Result
+    + Err(error: Err_Type): Result
+    + Is_Ok(): Boolean
+    + Is_Err(): Boolean
+    + Get_Ok(): Ok_Type
+    + Get_Err(): Err_Type
+    + Match<R>(ok_func, err_func): R
+  }
+
+  enum Result_Variant {
+    Ok_Variant
+    Err_Variant
+  }
+}
+
+package "Domain Events" as events {
+  abstract class "Domain_Event" {
+    + event_id: ULID_String
+    + occurred_at: Time
+    + event_version: Positive
+    --
+    + {abstract} Event_Name(): String
+    + Initialize_Event()
+  }
+
+  class "Event_List" {
+    - events: List<Domain_Event>
+    --
+    + Add(event: Domain_Event)
+    + Is_Empty(): Boolean
+    + Length(): Natural
+  }
+
+  interface "Event_Dispatcher" {
+    + {abstract} Dispatch(event: Domain_Event)
+    + {abstract} Dispatch_All(events: Event_List)
+  }
+}
+
+package "Aggregates" as aggregates <<AGGREGATE_COLOR>> {
+  abstract class "Aggregate_Root<ID_Type>" {
+    - id: ID_Type
+    - version: Natural
+    - created_timestamp: Time
+    - updated_timestamp: Time
+    - uncommitted_events: Event_List
+    - change_tracking: Change_Tracker_Access
+    --
+    + Get_Id(): ID_Type
+    + Get_Version(): Natural
+    + Has_Uncommitted_Events(): Boolean
+    + {abstract} Is_Valid(): Boolean
+    + {abstract} Apply_Event(event: Domain_Event)
+    + Mark_Events_As_Committed()
+    + Begin_Changes(): Result
+    + Commit_Changes(): Result
+    + Rollback_Changes(): Result
+    # Raise_Event(event: Domain_Event)
+    # Increment_Version()
+  }
+
+  class "Change_Tracker" {
+    - original_version: Natural
+    - events_before_change: Event_List
+  }
+}
+
+package "Domain Services" as services <<SERVICE_COLOR>> {
+  class "Generic_Pipeline_Stage<Input, Output, State, Config>" {
+    - name: String
+    - config: Config
+    - state: State
+    - is_initialized: Boolean
+    - items_processed: Natural
+    - errors_count: Natural
+    --
+    + Create(config: Config): Pipeline_Stage
+    + Process(input: Input): Result<Output, Error>
+    + Process_Batch(inputs: Input_Array): Batch_Result
+    + Process_Parallel(inputs: Input_Array, workers: Positive)
+    + Reset()
+    + Get_Statistics(): Stage_Statistics
+  }
+
+  class "File_Path_Service" {
+    + Normalize_Path(path: File_Path): Result<File_Path, Error>
+    + Resolve_Relative(base, relative: File_Path): Result<File_Path, Error>
+    + Get_Extension(path: File_Path): Result<String, Error>
+  }
+
+  class "SHA256_Hasher" {
+    + Hash_String(input: String): Result<Hash, Error>
+    + Hash_File(path: File_Path): Result<Hash, Error>
+    + Verify_Hash(input: String, expected: Hash): Boolean
+  }
+}
+
+package "Repository Ports" as repos {
+  interface "Repository_Interface<Entity, ID>" {
+    + {abstract} Save(entity: Entity): Result<ID, Error>
+    + {abstract} Find_By_Id(id: ID): Result<Entity, Error>
+    + {abstract} Find_All(): Result<Vector<Entity>, Error>
+    + {abstract} Delete(id: ID): Result<Boolean, Error>
+    + {abstract} Exists(id: ID): Boolean
+    + {abstract} Count(): Natural
+  }
+
+  class "ACID_Repository<Entity, ID>" {
+    + Begin_Transaction(): Result<Transaction, Error>
+    + Commit(transaction: Transaction): Result<Boolean, Error>
+    + Rollback(transaction: Transaction): Result<Boolean, Error>
+  }
+
+  class "Unit_Of_Work" {
+    - new_entities: Entity_Set
+    - dirty_entities: Entity_Set
+    - removed_entities: Entity_Set
+    --
+    + Register_New(entity: Entity)
+    + Register_Dirty(entity: Entity)
+    + Register_Removed(entity: Entity)
+    + Commit(): Result<Boolean, Error>
+  }
+}
+
+package "Sagas" as sagas {
+  class "Saga_Coordinator" {
+    - registered_sagas: Map<String, Saga_Definition>
+    - active_instances: Map<Saga_ID, Saga_Instance>
+    --
+    + Register_Saga(definition: Saga_Definition)
+    + Execute_Saga(name: String, context: String): Result<Boolean, Error>
+  }
+
+  class "Saga_Instance" {
+    - id: Saga_ID
+    - state: Saga_State
+    - current_step: Natural
+    - executions: Map<String, Step_Execution>
+    --
+    + Start(context: String): Result<Boolean, Error>
+    + Get_State(): Saga_State
+  }
+
+  enum Saga_State {
+    Created
+    Running
+    Compensating
+    Completed
+    Failed
+    Aborted
+  }
+
+  interface "Saga_Step_Interface" {
+    + {abstract} Execute(context: String): Result<Step_Result, Error>
+    + {abstract} Compensate(context: String): Result<Step_Result, Error>
+    + {abstract} Name(): String
+  }
+}
+
+' Relationships
+"Type_Safe_Generic_ID<T>" --> "Result<Ok_Type, Err_Type>" : "returns"
+"Constrained_Strings" --> "Result<Ok_Type, Err_Type>" : "returns"
+"File_Path" --> "Result<Ok_Type, Err_Type>" : "returns"
+
+"Aggregate_Root<ID_Type>" --> "Domain_Event" : "raises"
+"Aggregate_Root<ID_Type>" --> "Event_List" : "contains"
+"Aggregate_Root<ID_Type>" --> "Change_Tracker" : "uses"
+"Aggregate_Root<ID_Type>" --> "Type_Safe_Generic_ID<T>" : "has ID"
+
+"Generic_Pipeline_Stage<Input, Output, State, Config>" --> "Result<Ok_Type, Err_Type>" : "returns"
+
+"Repository_Interface<Entity, ID>" --> "Result<Ok_Type, Err_Type>" : "returns"
+"ACID_Repository<Entity, ID>" --|> "Repository_Interface<Entity, ID>" : "extends"
+
+"Saga_Coordinator" --> "Saga_Instance" : "manages"
+"Saga_Instance" --> "Saga_Step_Interface" : "executes"
+"Saga_Instance" --> "Saga_State" : "has"
+
+"Event_List" --> "Domain_Event" : "contains"
+"Event_Dispatcher" --> "Domain_Event" : "dispatches"
+
+note top of values
+**VALUE OBJECTS**
+Immutable objects that describe
+characteristics of domain entities.
+No identity, compared by value.
+end note
+
+note top of aggregates
+**AGGREGATES**
+Consistency boundaries that
+group related entities and
+value objects together.
+end note
+
+note top of services
+**DOMAIN SERVICES**
+Stateless operations that
+don't naturally belong to
+any entity or value object.
+end note
+
+note top of repos
+**REPOSITORY PORTS**
+Abstractions for data access.
+Infrastructure layer provides
+concrete implementations.
+end note
+
+@enduml

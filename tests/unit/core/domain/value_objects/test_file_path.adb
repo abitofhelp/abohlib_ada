@@ -1,0 +1,228 @@
+--   =============================================================================
+--   Test_File_Path - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Domain.Value_Objects.File_Path;
+use Abohlib.Core.Domain.Value_Objects.File_Path;
+
+package body Test_File_Path is
+
+   ----------------------
+--  Test_Create_Valid_Path --
+   ----------------------
+
+   function Test_Create_Valid_Path return Void_Result.Result is
+      Path : constant File_Path := Create ("/home/user/document.txt");
+   begin
+      if Value (Path) /= "/home/user/document.txt" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("File path should match input string"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Create_Valid_Path")
+         ));
+      end if;
+      return Void_Result.Ok (True);
+   end Test_Create_Valid_Path;
+
+   ----------------------
+--  Test_File_Name --
+   ----------------------
+
+   function Test_File_Name return Void_Result.Result is
+      Path : constant File_Path := Create ("/home/user/document.txt");
+   begin
+      if File_Name (Path) /= "document.txt" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("File name extraction failed"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_File_Name")
+         ));
+      end if;
+      return Void_Result.Ok (True);
+   end Test_File_Name;
+
+   ----------------------
+--  Test_Extension --
+   ----------------------
+
+   function Test_Extension return Void_Result.Result is
+      Path : constant File_Path := Create ("/home/user/document.txt");
+   begin
+      if Extension (Path) /= ".txt" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Extension extraction failed"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Extension")
+         ));
+      end if;
+      return Void_Result.Ok (True);
+   end Test_Extension;
+
+   ----------------------
+--  Test_File_Stem --
+   ----------------------
+
+   function Test_File_Stem return Void_Result.Result is
+      Path : constant File_Path := Create ("/home/user/document.txt");
+   begin
+      if File_Stem (Path) /= "document" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("File stem extraction failed"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_File_Stem")
+         ));
+      end if;
+      return Void_Result.Ok (True);
+   end Test_File_Stem;
+
+   ----------------------
+--  Test_Is_Absolute --
+   ----------------------
+
+   function Test_Is_Absolute return Void_Result.Result is
+      Abs_Path : constant File_Path := Create ("/home/user/document.txt");
+      Rel_Path : constant File_Path := Create ("document.txt");
+   begin
+      if not Is_Absolute (Abs_Path) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("/home/user/document.txt should be absolute"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Is_Absolute")
+         ));
+      end if;
+
+      if Is_Absolute (Rel_Path) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("document.txt should be relative"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Is_Absolute")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Is_Absolute;
+
+   --------------------
+--  Run_All_Tests --
+   --------------------
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Test_Count : constant := 5;
+      Tests : Test_Results_Array (1 .. Test_Count);
+      Index : Positive := 1;
+   begin
+      Output.Write_Line ("=== Running File Path Tests ===");
+      Output.Write_Line ("");
+
+--  Test 1: Create valid path
+      declare
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test ("Create valid path", Test_Create_Valid_Path'Access, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            return Test_Stats_Result.Err (Result.Get_Err);
+         end if;
+      end;
+
+--  Test 2: File name extraction
+      declare
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test ("File name extraction", Test_File_Name'Access, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            return Test_Stats_Result.Err (Result.Get_Err);
+         end if;
+      end;
+
+--  Test 3: Extension extraction
+      declare
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test ("Extension extraction", Test_Extension'Access, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            return Test_Stats_Result.Err (Result.Get_Err);
+         end if;
+      end;
+
+--  Test 4: File stem extraction
+      declare
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test ("File stem extraction", Test_File_Stem'Access, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+            return Test_Stats_Result.Err (Result.Get_Err);
+         end if;
+      end;
+
+--  Test 5: Is absolute path
+      declare
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test ("Is absolute path", Test_Is_Absolute'Access, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+         else
+            return Test_Stats_Result.Err (Result.Get_Err);
+         end if;
+      end;
+
+--  Generate summary
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("File Path Tests", Tests, Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("File Path Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_File_Path;
+
+pragma Warnings (On, "subprogram body has no previous spec");

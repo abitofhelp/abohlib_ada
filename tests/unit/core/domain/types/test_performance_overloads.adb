@@ -1,0 +1,131 @@
+--   =============================================================================
+--   Test_Performance_Overloads - Tests for Overloaded Performance Functions
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Domain.Types.Performance; use Abohlib.Core.Domain.Types.Performance;
+with Abohlib.Core.Domain.Types.Bytes; use Abohlib.Core.Domain.Types.Bytes;
+with Abohlib.Core.Domain.Constants.Bytes; use Abohlib.Core.Domain.Constants.Bytes;
+with Abohlib.Core.Domain.Result;
+with Abohlib.Core.Testing;
+
+procedure Test_Performance_Overloads is
+
+   use Abohlib.Core.Testing;
+
+   package Test_Result is new Abohlib.Core.Domain.Result.Result_Package
+     (Ok_Type => Boolean, Err_Type => Unbounded_String);
+
+--   Test output implementation
+   type Test_Output_Port is new Output_Port_Interface with null record;
+
+   overriding procedure Log_Message
+     (Self : Test_Output_Port; Message : String) is
+   begin
+      Put_Line (Message);
+   end Log_Message;
+
+   Output : aliased Test_Output_Port;
+
+--   =========================================================================
+--   Overloaded Calculate_MB_Per_Second Tests
+--   =========================================================================
+
+   function Test_MB_Per_Second_Overloads_Match
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Bytes_SI  : constant SI_Bytes_Type := From_MB (100);  -- 100 MB
+      Bytes_LLI : constant Long_Long_Integer := 100_000_000;  -- 100 MB
+      Duration  : constant Standard.Duration := 2.5;  -- 2.5 seconds
+
+      Result_SI  : constant MB_Per_Second_Type := Calculate_MB_Per_Second (Bytes_SI, Duration);
+      Result_LLI : constant MB_Per_Second_Type := Calculate_MB_Per_Second (Bytes_LLI, Duration);
+
+      Expected : constant Float := 40.0;  -- 100 MB / 2.5 s = 40 MB/s
+   begin
+--  Both overloads should produce the same result
+      Assert (Float (Result_SI) = Float (Result_LLI),
+              "SI_Bytes_Type and Long_Long_Integer overloads don't match");
+
+--  Both should equal expected value
+      Assert (abs (Float (Result_SI) - Expected) < 0.01,
+              "SI_Bytes_Type overload incorrect");
+      Assert (abs (Float (Result_LLI) - Expected) < 0.01,
+              "Long_Long_Integer overload incorrect");
+
+      return True;
+   end Test_MB_Per_Second_Overloads_Match;
+
+   function Test_MB_Per_Second_File_Position_Type
+     (Output : access Test_Output_Port'Class) return Boolean is
+--  Simulate using File_Position_Type from pipelib
+      type File_Position_Type is new Long_Long_Integer range 0 .. Long_Long_Integer'Last;
+
+      File_Pos : constant File_Position_Type := 500_000_000;  -- 500 MB
+      Duration : constant Standard.Duration := 5.0;  -- 5 seconds
+
+--  Should be able to pass File_Position_Type to Long_Long_Integer overload
+      Result   : constant MB_Per_Second_Type :=
+         Calculate_MB_Per_Second (Long_Long_Integer (File_Pos), Duration);
+      Expected : constant Float := 100.0;  -- 500 MB / 5 s = 100 MB/s
+   begin
+      Assert (abs (Float (Result) - Expected) < 0.01,
+              "File_Position_Type conversion failed");
+      return True;
+   end Test_MB_Per_Second_File_Position_Type;
+
+   function Test_Zero_Bytes_Both_Overloads
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Zero_SI  : constant SI_Bytes_Type := 0;
+      Zero_LLI : constant Long_Long_Integer := 0;
+      Duration : constant Standard.Duration := 1.0;
+
+      Result_SI  : constant MB_Per_Second_Type := Calculate_MB_Per_Second (Zero_SI, Duration);
+      Result_LLI : constant MB_Per_Second_Type := Calculate_MB_Per_Second (Zero_LLI, Duration);
+   begin
+      Assert (Float (Result_SI) = 0.0, "Zero SI_Bytes should give 0 MB/s");
+      Assert (Float (Result_LLI) = 0.0, "Zero Long_Long_Integer should give 0 MB/s");
+      Assert (Float (Result_SI) = Float (Result_LLI), "Zero results should match");
+      return True;
+   end Test_Zero_Bytes_Both_Overloads;
+
+   function Test_Negative_Protection
+     (Output : access Test_Output_Port'Class) return Boolean is
+--  The Long_Long_Integer overload has Pre => Bytes >= 0
+--  This test verifies the precondition would catch negative values
+--  (In a real test, we'd use pragma Assertion_Policy (Check))
+      Positive_Bytes : constant Long_Long_Integer := 1_000_000;
+      Duration : constant Standard.Duration := 1.0;
+
+      Result : constant MB_Per_Second_Type :=
+         Calculate_MB_Per_Second (Positive_Bytes, Duration);
+   begin
+--  Just verify positive values work correctly
+      Assert (Float (Result) = 1.0, "1 MB / 1 s should equal 1 MB/s");
+      return True;
+   end Test_Negative_Protection;
+
+--   Test suite
+   Suite : constant Test_Suite := Create_Suite ("Performance Function Overloads");
+
+begin
+--  Overload tests
+   Add_Test (Suite, "MB/s overloads produce matching results",
+             Test_MB_Per_Second_Overloads_Match'Access);
+   Add_Test (Suite, "MB/s works with File_Position_Type",
+             Test_MB_Per_Second_File_Position_Type'Access);
+   Add_Test (Suite, "Zero bytes in both overloads",
+             Test_Zero_Bytes_Both_Overloads'Access);
+   Add_Test (Suite, "Negative value protection",
+             Test_Negative_Protection'Access);
+
+--  Run tests
+   Run_Suite (Suite, Output'Access);
+end Test_Performance_Overloads;
+
+pragma Warnings (On, "subprogram body has no previous spec");

@@ -1,0 +1,426 @@
+--   =============================================================================
+--   Test_Mock_Usage_Example - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Test.Mocks.File_System;
+with Abohlib.Test.Mocks.System_Info;
+with Abohlib.Core.Domain.Ports.File_System;
+with Abohlib.Core.Domain.Ports.System_Info;
+
+package body Test_Mock_Usage_Example is
+
+   use Abohlib.Test.Mocks.File_System;
+   use Abohlib.Test.Mocks.System_Info;
+   use Abohlib.Core.Domain.Ports.File_System;
+   use Abohlib.Core.Domain.Ports.System_Info;
+
+--   ==========================================================================
+--   Example Domain Service That Uses Ports
+--   ==========================================================================
+
+--  Example: A service that checks if a file is too large
+   function Is_File_Too_Large
+     (FS_Provider : File_System_Provider'Class;
+      Path        : String;
+      Max_Size    : Natural) return Boolean_Result.Result
+   is
+      Size_Result : constant Natural_Result.Result := FS_Provider.Get_File_Size (Path);
+   begin
+      if not Size_Result.Is_Ok then
+         return Boolean_Result.Err (Size_Result.Get_Err);
+      end if;
+
+      return Boolean_Result.Ok (Size_Result.Get_Ok > Max_Size);
+   end Is_File_Too_Large;
+
+--  Example: A service that checks if system has enough memory
+   function Has_Sufficient_Memory
+     (SI_Provider : System_Info_Provider'Class;
+      Required    : Long_Long_Integer) return Boolean
+   is
+      Mem_Result : constant Memory_Result.Result := SI_Provider.Get_Available_Memory;
+   begin
+      if Mem_Result.Is_Ok then
+         return Mem_Result.Get_Ok >= Required;
+      else
+         return False;
+      end if;
+   end Has_Sufficient_Memory;
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_File_System_Mock_Usage return Void_Result.Result is
+      Mock_FS : Mock_File_System_Provider;
+   begin
+--  Setup mock file system
+      Mock_FS.Add_File ("/test/small.txt", Size => 100);
+      Mock_FS.Add_File ("/test/large.txt", Size => 10_000);
+      Mock_FS.Add_Directory ("/test");
+
+--  Test with small file
+      declare
+         Result : constant Boolean_Result.Result :=
+            Is_File_Too_Large (Mock_FS, "/test/small.txt", 1000);
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to check small file"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_File_System_Mock_Usage")
+            ));
+         end if;
+
+         if Result.Get_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Small file should not be too large"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_File_System_Mock_Usage")
+            ));
+         end if;
+      end;
+
+--  Test with large file
+      declare
+         Result : constant Boolean_Result.Result :=
+            Is_File_Too_Large (Mock_FS, "/test/large.txt", 1000);
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to check large file"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_File_System_Mock_Usage")
+            ));
+         end if;
+
+         if not Result.Get_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Large file should be too large"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_File_System_Mock_Usage")
+            ));
+         end if;
+      end;
+
+--  Test with non-existent file
+      declare
+         Result : constant Boolean_Result.Result :=
+            Is_File_Too_Large (Mock_FS, "/test/missing.txt", 1000);
+      begin
+         if Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should fail for non-existent file"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_File_System_Mock_Usage")
+            ));
+         end if;
+
+         declare
+            Error : constant File_System_Error := Result.Get_Err;
+         begin
+            if Error.Kind /= File_Not_Found then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Wrong error kind for missing file"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_File_System_Mock_Usage")
+               ));
+            end if;
+         end;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_File_System_Mock_Usage;
+
+   function Test_System_Info_Mock_Usage return Void_Result.Result is
+      Mock_SI : Mock_System_Info_Provider;
+   begin
+--  Setup mock system info
+      Mock_SI.Set_Available_Memory (2_147_483_648); -- 2 GB
+
+--  Test with requirement less than available
+      if not Has_Sufficient_Memory (Mock_SI, 1_073_741_824) then -- 1 GB
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should have sufficient memory"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_System_Info_Mock_Usage")
+         ));
+      end if;
+
+--  Test with requirement more than available
+      if Has_Sufficient_Memory (Mock_SI, 4_294_967_296) then -- 4 GB
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should not have sufficient memory"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_System_Info_Mock_Usage")
+         ));
+      end if;
+
+--  Test OS information
+      Mock_SI.Set_OS_Name ("TestOS");
+      Mock_SI.Set_OS_Version ("2.0");
+      Mock_SI.Set_Architecture ("aarch64");
+
+      declare
+         Name_Result : constant Abohlib.Core.Domain.Ports.System_Info.String_Result.Result := Mock_SI.Get_OS_Name;
+         Version_Result : constant Abohlib.Core.Domain.Ports.System_Info.String_Result.Result := Mock_SI.Get_OS_Version;
+         Arch_Result : constant Abohlib.Core.Domain.Ports.System_Info.String_Result.Result := Mock_SI.Get_Architecture;
+      begin
+         if not (Name_Result.Is_Ok and Version_Result.Is_Ok and Arch_Result.Is_Ok) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to get OS info"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_System_Info_Mock_Usage")
+            ));
+         end if;
+
+         if To_String (Name_Result.Get_Ok) /= "TestOS" then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Wrong OS name"),
+               Details     => To_Unbounded_String ("Got: " & To_String (Name_Result.Get_Ok)),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_System_Info_Mock_Usage")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_System_Info_Mock_Usage;
+
+   function Test_Mock_Failure_Simulation return Void_Result.Result is
+      Mock_FS : Mock_File_System_Provider;
+      Mock_SI : Mock_System_Info_Provider;
+   begin
+--  Test file system failure
+      Mock_FS.Add_File ("/test/file.txt", Size => 100);
+      Mock_FS.Set_Fail_Next
+        (Make_File_System_Error
+           (Kind    => Access_Denied,
+            Message => "Permission denied",
+            Path    => "/test/file.txt"));
+
+      declare
+         Result : constant Natural_Result.Result := Mock_FS.Get_File_Size ("/test/file.txt");
+      begin
+         if Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Expected failure"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Mock_Failure_Simulation")
+            ));
+         end if;
+
+         declare
+            Error : constant File_System_Error := Result.Get_Err;
+         begin
+            if Error.Kind /= Access_Denied then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Wrong error kind"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Mock_Failure_Simulation")
+               ));
+            end if;
+         end;
+      end;
+
+--  Test system info method-specific failure
+      Mock_SI.Set_Method_Failure ("Get_CPU_Count", True);
+
+      declare
+         Result : constant CPU_Count_Result.Result := Mock_SI.Get_CPU_Count;
+      begin
+         if Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("CPU count should fail"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Mock_Failure_Simulation")
+            ));
+         end if;
+      end;
+
+--  Other methods should still work
+      declare
+         Result : constant Memory_Result.Result := Mock_SI.Get_Total_Memory;
+      begin
+         if not Result.Is_Ok then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Total memory should succeed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Mock_Failure_Simulation")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Mock_Failure_Simulation;
+
+   function Test_Mock_Call_Tracking return Void_Result.Result is
+      Mock_FS : Mock_File_System_Provider;
+      Mock_SI : Mock_System_Info_Provider;
+   begin
+--  Reset call counts
+      Mock_FS.Reset_Call_Count;
+      Mock_SI.Reset_Call_Count;
+
+--  Make some calls
+      Mock_FS.Add_File ("/test.txt");
+      declare
+         R1 : constant Boolean_Result.Result := Mock_FS.Exists ("/test.txt");
+         R2 : constant Boolean_Result.Result := Mock_FS.Is_Regular_File ("/test.txt");
+         R3 : constant Natural_Result.Result := Mock_FS.Get_File_Size ("/test.txt");
+         pragma Unreferenced (R1, R2, R3);
+      begin
+         null;
+      end;
+
+--  Check file system call count
+      if Mock_FS.Get_Call_Count /= 3 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Wrong FS call count"),
+            Details     => To_Unbounded_String ("Expected: 3, Got: " & Mock_FS.Get_Call_Count'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Mock_Call_Tracking")
+         ));
+      end if;
+
+--  Make system info calls
+      declare
+         R1 : constant Memory_Result.Result := Mock_SI.Get_Total_Memory;
+         R2 : constant Memory_Result.Result := Mock_SI.Get_Available_Memory;
+         R3 : constant CPU_Count_Result.Result := Mock_SI.Get_CPU_Count;
+         R4 : constant Abohlib.Core.Domain.Ports.System_Info.String_Result.Result := Mock_SI.Get_OS_Name;
+         pragma Unreferenced (R1, R2, R3, R4);
+      begin
+         null;
+      end;
+
+--  Check system info call count
+      if Mock_SI.Get_Call_Count /= 4 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Wrong SI call count"),
+            Details     => To_Unbounded_String ("Expected: 4, Got: " & Mock_SI.Get_Call_Count'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Mock_Call_Tracking")
+         ));
+      end if;
+
+--  Test reset
+      Mock_SI.Reset_Call_Count;
+      if Mock_SI.Get_Call_Count /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Call count not reset"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Mock_Call_Tracking")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Mock_Call_Tracking;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 4);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Test_Func : Test_Function_Access)
+      is
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test (Name, Test_Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+--  Handle test execution error
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => 0.0,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => To_Unbounded_String ("TEST-" & Name)
+               );
+               Print_Test_Result (Tests (Index), Output);
+               Index := Index + 1;
+            end;
+         end if;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("=== Running Mock Usage Example Tests ===");
+      Output.Write_Line ("");
+
+--  Run all tests
+      Add_Test_Result ("Test_File_System_Mock_Usage", Test_File_System_Mock_Usage'Access);
+      Add_Test_Result ("Test_System_Info_Mock_Usage", Test_System_Info_Mock_Usage'Access);
+      Add_Test_Result ("Test_Mock_Failure_Simulation", Test_Mock_Failure_Simulation'Access);
+      Add_Test_Result ("Test_Mock_Call_Tracking", Test_Mock_Call_Tracking'Access);
+
+--  Generate summary
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Mock_Usage_Example_Tests", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Mock Usage Example Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Mock_Usage_Example;

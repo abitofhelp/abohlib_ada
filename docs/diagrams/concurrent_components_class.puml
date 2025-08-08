@@ -1,0 +1,144 @@
+@startuml Concurrent_Components_Class
+!theme aws-orange
+title Concurrent Components Architecture\nThread-Safe Data Structures
+
+!define PROTECTED_COLOR #E8F4F8
+!define TASK_COLOR #FFF2E8
+!define GENERIC_COLOR #F0F8E8
+
+package "Lock-Free Data Structures" <<GENERIC_COLOR>> {
+  
+  class "Lock_Free_Queue<Element_Type>" {
+    - Head : Node_Access
+    - Tail : Node_Access
+    --
+    + Enqueue(Item : Element_Type)
+    + Dequeue(Item : out Element_Type) : Boolean
+    + Is_Empty() : Boolean
+    + Get_Count() : Natural
+    --
+    Note: Uses Compare-And-Swap
+  }
+  
+  class "Lock_Free_Ring_Buffer<Element_Type>" {
+    - Buffer : Element_Array
+    - Head : Atomic_Natural
+    - Tail : Atomic_Natural
+    - Size : Natural
+    --
+    + Put(Item : Element_Type) : Boolean
+    + Get(Item : out Element_Type) : Boolean
+    + Is_Full() : Boolean
+    + Is_Empty() : Boolean
+    + Available_Space() : Natural
+  }
+}
+
+package "Protected Components" <<PROTECTED_COLOR>> {
+  
+  class "<<protected>> Buffer_Manager" {
+    - Buffers : Buffer_Array
+    - Free_List : Index_Array
+    - Free_Count : Natural
+    --
+    + entry Allocate(Index : out Natural)
+    + procedure Release(Index : Natural)
+    + function Available_Count : Natural
+    + entry Wait_For_Buffer(Index : out Natural)
+  }
+  
+  class "<<protected>> Cancellation_Source" {
+    - Is_Cancelled : Boolean := False
+    - Cancellation_Time : Time
+    - Reason : Unbounded_String
+    --
+    + procedure Request_Cancellation(Reason : String)
+    + function Is_Cancellation_Requested : Boolean
+    + entry Wait_For_Cancellation
+    + procedure Reset
+  }
+  
+  class "Buffer_State_Machine" {
+    <<protected>>
+    - Current_State : Buffer_State
+    - History : State_History
+    - Stats : Statistics
+    --
+    + function Transition_To(New_State) : Result
+    + function Get_Current_State : Buffer_State
+    + function Can_Transition_To(State) : Boolean
+    + procedure Reset
+  }
+}
+
+package "Task Components" <<TASK_COLOR>> {
+  
+  class "<<task>> Worker_Task" {
+    - ID : Worker_ID
+    - Cancellation : Cancellation_Source_Access
+    --
+    + entry Start(Config : Worker_Config)
+    + entry Stop
+    + entry Process(Item : Work_Item)
+  }
+  
+  class "<<task>> Monitor_Task" {
+    - Check_Interval : Duration
+    - Components : Component_Array
+    --
+    + entry Start
+    + entry Stop
+    + entry Register_Component(C : Component_Access)
+  }
+}
+
+enum "Buffer_State" {
+  Free
+  Reading
+  Ready
+  Consuming
+  Error
+}
+
+class "Thread_Pool" <<TASK_COLOR>> {
+  - Workers : Worker_Array
+  - Work_Queue : Lock_Free_Queue
+  - Manager : Buffer_Manager_Access
+  --
+  + Submit(Item : Work_Item)
+  + Shutdown
+  + Get_Active_Count : Natural
+  + Wait_For_Completion
+}
+
+"Thread_Pool" --> "Worker_Task" : manages
+"Thread_Pool" --> "Lock_Free_Queue<Element_Type>" : uses
+"Worker_Task" --> "Cancellation_Source" : monitors
+"Buffer_State_Machine" --> Buffer_State : transitions
+"Thread_Pool" --> "Buffer_Manager" : allocates from
+
+note right of "Lock_Free_Queue<Element_Type>"
+  **Lock-Free Benefits:**
+  - No mutex overhead
+  - Better scalability
+  - Reduced contention
+  - Predictable performance
+end note
+
+note left of "Buffer_Manager"
+  **Protected Object Features:**
+  - Automatic mutual exclusion
+  - Entry barriers for conditions
+  - Priority ceiling protocol
+  - Deadlock prevention
+end note
+
+note bottom of "Thread_Pool"
+  **Usage Pattern:**
+  Pool : Thread_Pool(Worker_Count => 4);
+  Pool.Submit(Work_Item);
+  -- Work processed asynchronously
+  Pool.Wait_For_Completion;
+end note
+
+@enduml

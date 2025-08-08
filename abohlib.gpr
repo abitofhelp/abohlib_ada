@@ -1,0 +1,85 @@
+with "config/abohlib_config.gpr";
+project Abohlib is
+
+   for Library_Name use "Abohlib";
+   for Library_Version use Project'Library_Name & ".so." & Abohlib_Config.Crate_Version;
+
+   for Source_Dirs use (
+      "src/",
+      "config/",
+      -- Core Layer
+      "src/core/",
+      -- Core Domain Layer
+      "src/core/domain/",
+      "src/core/domain/aggregates/",
+      "src/core/domain/constants/",
+      "src/core/domain/entities/",
+      "src/core/domain/math/",
+      "src/core/domain/types/",
+      "src/core/domain/errors/",
+      "src/core/domain/events/",
+      "src/core/domain/ports/",
+      "src/core/domain/ports/concurrent/",
+      "src/core/domain/repositories/",
+      "src/core/domain/sagas/",
+      "src/core/domain/services/",
+      "src/core/domain/services/pipeline/",
+      "src/core/domain/utilities/",
+      "src/core/domain/utilities/concurrent/",
+      "src/core/domain/utilities/io/",
+      "src/core/domain/utilities/system/",
+      "src/core/domain/value_objects/",
+      -- Core Application Layer
+      "src/core/application/",
+      "src/core/application/constants/",
+      "src/core/application/dtos/",
+      "src/core/application/errors/",
+      "src/core/application/services/",
+      "src/core/application/use_cases/",
+      -- Infrastructure Layer
+      "src/infrastructure/",
+      "src/infrastructure/adapters/",
+      "src/infrastructure/config/",
+      "src/infrastructure/constants/",
+      "src/infrastructure/errors/",
+      "src/infrastructure/logging/",
+      "src/infrastructure/persistence/",
+      "src/infrastructure/resilience/",
+      "src/infrastructure/testing/",
+      -- Presentation Layer
+      "src/presentation/",
+      "src/presentation/adapters/",
+      "src/presentation/adapters/cli/",
+      "src/presentation/adapters/graphql/",
+      "src/presentation/adapters/rest/",
+      "src/presentation/constants/",
+      "src/presentation/errors/"
+   );
+   for Object_Dir use "obj/" & Abohlib_Config.Build_Profile;
+   for Create_Missing_Dirs use "True";
+   for Library_Dir use "lib";
+
+   type Library_Type_Type is ("relocatable", "static", "static-pic");
+   Library_Type : Library_Type_Type :=
+     external ("ABOHLIB_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
+   for Library_Kind use Library_Type;
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        Abohlib_Config.Ada_Compiler_Switches &
+        ("-gnat2022", "-gnatyM120", "-gnaty3", "-gnatwa");
+   end Compiler;
+
+   package Binder is
+      for Switches ("Ada") use ("-Es"); --  Symbolic traceback
+   end Binder;
+
+   package Install is
+      for Artifacts (".") use ("share");
+   end Install;
+
+   package Format is
+      for Configuration use "/.gnatformat.yaml";
+   end Format;
+
+end Abohlib;

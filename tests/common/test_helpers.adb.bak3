@@ -1,0 +1,77 @@
+--   =============================================================================
+--   Test_Helpers - Common Test Helper Procedures Implementation
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Exceptions;
+
+package body Test_Helpers is
+
+--   Run a single test and update statistics
+   procedure Run_Test
+     (Name   : String;
+      Test   : Test_Function;
+      Output : access Test_Output_Port'Class;
+      Stats  : in out Test_Stats) is
+   begin
+      Stats.Total := Stats.Total + 1;
+      Output.Write_Line ("  [RUN] " & Name);
+
+      begin
+         if Test (Output) then
+            Stats.Passed := Stats.Passed + 1;
+            Output.Write_Line ("  [PASS] " & Name);
+         else
+            Stats.Failed := Stats.Failed + 1;
+            Output.Write_Error ("  [FAIL] " & Name);
+         end if;
+      exception
+         when E : others =>
+            Stats.Failed := Stats.Failed + 1;
+            Output.Write_Error ("  [ERROR] " & Name & " - " &
+                              Ada.Exceptions.Exception_Message (E));
+      end;
+   end Run_Test;
+
+--   Alternative signature to match usage pattern
+   procedure Run_Test
+     (Output : access Test_Output_Port'Class;
+      Stats  : in out Test_Stats;
+      Name   : String;
+      Test   : Test_Function) is
+   begin
+      Run_Test (Name, Test, Output, Stats);
+   end Run_Test;
+
+--   Print test summary
+   procedure Print_Test_Summary
+     (Title  : String;
+      Stats  : Test_Stats;
+      Output : access Test_Output_Port'Class) is
+   begin
+      Output.Write_Line ("");
+      Output.Write_Line ("=== " & Title & " Summary ===");
+      Output.Write_Line ("Total:  " & Stats.Total'Image);
+      Output.Write_Line ("Passed: " & Stats.Passed'Image);
+      Output.Write_Line ("Failed: " & Stats.Failed'Image);
+
+      if Stats.Failed = 0 then
+         Output.Write_Line ("Result: ALL TESTS PASSED");
+      else
+         Output.Write_Error ("Result: TESTS FAILED");
+      end if;
+   end Print_Test_Summary;
+
+--   Alternative signatures to match usage patterns
+   procedure Print_Summary
+     (Output : access Test_Output_Port'Class;
+      Stats  : Test_Stats;
+      Title  : String) is
+   begin
+      Print_Test_Summary (Title, Stats, Output);
+   end Print_Summary;
+
+end Test_Helpers;

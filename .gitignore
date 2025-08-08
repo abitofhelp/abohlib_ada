@@ -1,0 +1,60 @@
+# Alire generated directories
+/alire/
+/bin/
+/config/
+/obj/
+/lib/
+/share/
+
+# Ada compilation artifacts
+*.ali
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# GNAT project artifacts
+*.bexch
+*.lexch
+*.cgpr
+
+# Editor temporary files
+*~
+*.swp
+*.swo
+.#*
+\#*#
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.iml
+
+# Test coverage
+simple_test_runner
+*.gcda
+*.gcno
+*.gcov
+/coverage/
+/tests/obj/
+
+# Documentation build
+/doc/build/
+
+# Temporary files
+*.bak
+*.tmp
+*.temp
+*.log
+/test_basename
+/test_compose
+/test_compose2
+/test_extension
+/test_fullname
+/test_names
+*.sh

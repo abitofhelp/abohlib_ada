@@ -1,0 +1,198 @@
+@startuml Repository_Pattern_Class
+!theme aws-orange
+title Repository Pattern - Ports and Adapters Implementation
+
+!define DOMAIN_COLOR #E8F4F8
+!define INFRA_COLOR #F0F8E8
+!define APP_COLOR #FFF2E8
+
+package "Domain Layer (Ports)" as domain <<DOMAIN_COLOR>> {
+
+  interface "Repository_Interface<Entity, ID>" {
+    + {abstract} Save(entity: Entity): Result<ID, Error>
+    + {abstract} Find_By_Id(id: ID): Result<Entity, Error>
+    + {abstract} Find_All(): Result<Vector<Entity>, Error>
+    + {abstract} Delete(id: ID): Result<Boolean, Error>
+    + {abstract} Exists(id: ID): Boolean
+    + {abstract} Count(): Natural
+    + {abstract} Save_Batch(entities: Vector<Entity>): Result<ID, Error>
+    + {abstract} Delete_Batch(ids: ID_Array): Result<Boolean, Error>
+    + {abstract} Find_Paginated(page: Positive, per_page: Positive): Result<Vector<Entity>, Error>
+    + {abstract} Check_Repository_State(): Boolean <<Ghost>>
+  }
+
+  class "ACID_Repository<Entity, ID>" {
+    - transaction_support: Boolean
+    - isolation_level: Isolation_Level
+    --
+    + Begin_Transaction(): Result<Transaction, Error>
+    + Commit(transaction: Transaction): Result<Boolean, Error>
+    + Rollback(transaction: Transaction): Result<Boolean, Error>
+    + Execute_In_Transaction<T>(operation: Operation<T>): Result<T, Error>
+  }
+
+  class "Unit_Of_Work" {
+    - new_entities: Set<Entity>
+    - dirty_entities: Set<Entity>
+    - removed_entities: Set<Entity>
+    - repositories: Map<Type, Repository_Interface>
+    --
+    + Register_New(entity: Entity)
+    + Register_Dirty(entity: Entity)
+    + Register_Removed(entity: Entity)
+    + Register_Repository(repo: Repository_Interface)
+    + Commit(): Result<Boolean, Error>
+    + Rollback(): Result<Boolean, Error>
+  }
+
+  class "Generic_Repository<Entity, ID>" {
+    <<generic>>
+    --
+    + Find_By_Specification<Spec>(spec: Spec): Result<Vector<Entity>, Error>
+    + Execute_In_Transaction(operation: Operation): Result<Boolean, Error>
+  }
+
+  enum Isolation_Level {
+    Read_Uncommitted
+    Read_Committed
+    Repeatable_Read
+    Serializable
+  }
+}
+
+package "Application Layer" as application <<APP_COLOR>> {
+
+  class "Entity_Service<Entity, ID>" {
+    - repository: Repository_Interface<Entity, ID>
+    - unit_of_work: Unit_Of_Work
+    --
+    + Create_Entity(data: Entity_DTO): Result<ID, Error>
+    + Update_Entity(id: ID, data: Entity_DTO): Result<Boolean, Error>
+    + Get_Entity(id: ID): Result<Entity_DTO, Error>
+    + Delete_Entity(id: ID): Result<Boolean, Error>
+    + List_Entities(page: Natural, size: Natural): Result<List<Entity_DTO>, Error>
+  }
+
+  class "Batch_Operations_Service<Entity, ID>" {
+    - repository: Repository_Interface<Entity, ID>
+    --
+    + Bulk_Create(entities: List<Entity_DTO>): Result<List<ID>, Error>
+    + Bulk_Update(updates: Map<ID, Entity_DTO>): Result<Boolean, Error>
+    + Bulk_Delete(ids: List<ID>): Result<Boolean, Error>
+  }
+}
+
+package "Infrastructure Layer (Adapters)" as infrastructure <<INFRA_COLOR>> {
+
+  class "Database_Repository<Entity, ID>" {
+    - connection: Database_Connection
+    - table_name: String
+    - id_column: String
+    --
+    + Save(entity: Entity): Result<ID, Error>
+    + Find_By_Id(id: ID): Result<Entity, Error>
+    + Find_All(): Result<Vector<Entity>, Error>
+    + Delete(id: ID): Result<Boolean, Error>
+    + Exists(id: ID): Boolean
+    + Count(): Natural
+    - Execute_Query(sql: String, params: Parameters): Result<Query_Result, Error>
+    - Map_To_Entity(row: Database_Row): Result<Entity, Error>
+    - Map_From_Entity(entity: Entity): Database_Row
+  }
+
+  class "File_Based_Repository<Entity, ID>" {
+    - base_directory: File_Path
+    - serializer: Serializer<Entity>
+    --
+    + Save(entity: Entity): Result<ID, Error>
+    + Find_By_Id(id: ID): Result<Entity, Error>
+    + Find_All(): Result<Vector<Entity>, Error>
+    + Delete(id: ID): Result<Boolean, Error>
+    - Get_File_Path(id: ID): File_Path
+    - Serialize_Entity(entity: Entity): Result<String, Error>
+    - Deserialize_Entity(data: String): Result<Entity, Error>
+  }
+
+  class "In_Memory_Repository<Entity, ID>" {
+    - storage: Map<ID, Entity>
+    - next_id: Atomic<Natural>
+    --
+    + Save(entity: Entity): Result<ID, Error>
+    + Find_By_Id(id: ID): Result<Entity, Error>
+    + Find_All(): Result<Vector<Entity>, Error>
+    + Delete(id: ID): Result<Boolean, Error>
+    + Clear(): Result<Boolean, Error>
+  }
+
+  class "Caching_Repository<Entity, ID>" {
+    - underlying_repository: Repository_Interface<Entity, ID>
+    - cache: LRU_Cache<ID, Entity>
+    - cache_ttl: Duration
+    --
+    + Save(entity: Entity): Result<ID, Error>
+    + Find_By_Id(id: ID): Result<Entity, Error>
+    + Invalidate_Cache(id: ID)
+    + Clear_Cache()
+  }
+}
+
+' Inheritance relationships
+"ACID_Repository<Entity, ID>" --|> "Repository_Interface<Entity, ID>" : implements
+"Generic_Repository<Entity, ID>" --|> "Repository_Interface<Entity, ID>" : implements
+
+' Infrastructure implementations
+"Database_Repository<Entity, ID>" ..|> "Repository_Interface<Entity, ID>" : implements
+"File_Based_Repository<Entity, ID>" ..|> "Repository_Interface<Entity, ID>" : implements
+"In_Memory_Repository<Entity, ID>" ..|> "Repository_Interface<Entity, ID>" : implements
+"Caching_Repository<Entity, ID>" ..|> "Repository_Interface<Entity, ID>" : implements
+
+' Composition relationships
+"Unit_Of_Work" o-- "Repository_Interface<Entity, ID>" : contains
+"Entity_Service<Entity, ID>" o-- "Repository_Interface<Entity, ID>" : uses
+"Entity_Service<Entity, ID>" o-- "Unit_Of_Work" : uses
+"Batch_Operations_Service<Entity, ID>" o-- "Repository_Interface<Entity, ID>" : uses
+"Caching_Repository<Entity, ID>" o-- "Repository_Interface<Entity, ID>" : decorates
+
+' Enums
+"ACID_Repository<Entity, ID>" --> "Isolation_Level" : uses
+
+note top of domain
+**DOMAIN PORTS**
+Abstract interfaces that define
+data access contracts without
+coupling to specific storage
+implementations.
+end note
+
+note top of infrastructure
+**INFRASTRUCTURE ADAPTERS**
+Concrete implementations that
+connect to actual data stores
+while implementing domain ports.
+end note
+
+note right of "Unit_Of_Work"
+**UNIT OF WORK PATTERN**
+Maintains a list of objects
+affected by a business transaction
+and coordinates writing out
+changes and resolving concurrency
+problems.
+end note
+
+note left of "Generic_Repository<Entity, ID>"
+**GENERIC REPOSITORY**
+Provides reusable repository
+functionality for any entity type,
+reducing code duplication while
+maintaining type safety.
+end note
+
+note bottom of "Caching_Repository<Entity, ID>"
+**DECORATOR PATTERN**
+Wraps another repository to
+add caching functionality
+transparently.
+end note
+
+@enduml

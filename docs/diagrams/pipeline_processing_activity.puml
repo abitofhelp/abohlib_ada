@@ -1,0 +1,83 @@
+@startuml Pipeline_Processing_Activity
+!theme plain
+skinparam activityBackgroundColor lightblue
+skinparam activityBorderColor black
+skinparam activityFontSize 10
+
+start
+
+:Initialize Pipeline Stage\nwith Config and State;
+
+:Receive Input(s);
+
+if (Input Valid?) then (yes)
+  :Get Current State;
+else (no)
+  :Increment Error Count;
+  :Return Validation Error;
+  stop
+endif
+
+:Record Start Time;
+
+if (Processing Mode?) then (Single Item)
+  :Apply Process_Element Function;
+
+  if (Processing Successful?) then (yes)
+    :Validate Output;
+
+    if (Output Valid?) then (yes)
+      :Update State;
+      :Increment Items Processed;
+      :Record Processing Time;
+      :Return Ok(Output);
+    else (no)
+      :Increment Error Count;
+      :Return Validation Error;
+    endif
+  else (no)
+    :Increment Error Count;
+    :Return Processing Error;
+  endif
+
+else (Batch Processing)
+  :Initialize Result Arrays;
+
+  if (Parallel Mode?) then (yes)
+    fork
+      :Process Item Group 1;
+    fork again
+      :Process Item Group 2;
+    fork again
+      :Process Item Group N;
+    end fork
+  else (no)
+    repeat
+      :Process Next Item;
+      :Store Result;
+    repeat while (More Items?)
+  endif
+
+  :Collect All Results;
+  :Update Statistics;
+
+  if (Fail-Fast Mode?) then (yes)
+    if (Any Item Failed?) then (yes)
+      :Return First Error;
+      stop
+    else (no)
+      :Return All Results;
+    endif
+  else (no)
+    :Return All Results\n(Success/Error per Item);
+  endif
+endif
+
+:Calculate Success Rate;
+:Calculate Average Time;
+:Calculate Min/Max Times;
+:Return Stage Statistics;
+
+stop
+
+@enduml

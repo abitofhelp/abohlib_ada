@@ -1,0 +1,560 @@
+--   =============================================================================
+--   Test_Retry_Handler - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--
+--   Purpose:
+--     Unit tests for the generic retry handler infrastructure component
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Calendar;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Infrastructure.Resilience.Generic_Retry_Handler;
+
+package body Test_Retry_Handler_Unit is
+
+--   ==========================================================================
+--   Test Setup - Mock Operation Types
+--   ==========================================================================
+
+--  Simple result type for testing
+   type Operation_Result is record
+      Success : Boolean := False;
+      Value   : Integer := 0;
+      Message : Unbounded_String;
+   end record;
+
+--  Global state for controlling mock operations
+   type Mock_State is record
+      Call_Count        : Natural := 0;
+      Succeed_After     : Natural := 1; -- Succeed on this attempt
+      Always_Fail       : Boolean := False;
+      Return_Value      : Integer := 42;
+      Last_Call_Message : Unbounded_String;
+   end record;
+
+   Global_Mock_State : Mock_State;
+
+--  Reset mock state between tests
+   procedure Reset_Mock_State is
+   begin
+      Global_Mock_State := (others => <>);
+   end Reset_Mock_State;
+
+--  Mock operation that can be configured to succeed/fail
+   function Mock_Operation return Operation_Result is
+   begin
+      Global_Mock_State.Call_Count := Global_Mock_State.Call_Count + 1;
+      Global_Mock_State.Last_Call_Message :=
+         To_Unbounded_String ("Call " & Global_Mock_State.Call_Count'Image);
+
+      if Global_Mock_State.Always_Fail then
+         return Operation_Result'(
+            Success => False,
+            Value   => 0,
+            Message => To_Unbounded_String ("Always fails")
+         );
+      elsif Global_Mock_State.Call_Count >= Global_Mock_State.Succeed_After then
+         return Operation_Result'(
+            Success => True,
+            Value   => Global_Mock_State.Return_Value,
+            Message => To_Unbounded_String ("Success on attempt " &
+                                           Global_Mock_State.Call_Count'Image)
+         );
+      else
+         return Operation_Result'(
+            Success => False,
+            Value   => 0,
+            Message => To_Unbounded_String ("Failed attempt " &
+                                           Global_Mock_State.Call_Count'Image)
+         );
+      end if;
+   end Mock_Operation;
+
+--  Success checker
+   function Is_Success (Result : Operation_Result) return Boolean is
+      (Result.Success);
+
+--  Error message extractor
+   function Get_Error_Message (Result : Operation_Result) return String is
+      (To_String (Result.Message));
+
+--  Instantiate retry handler for our mock operation
+   package Mock_Retry is new Abohlib.Infrastructure.Resilience.Generic_Retry_Handler
+     (Result_Type        => Operation_Result,
+      Execute            => Mock_Operation,
+      Is_Success         => Is_Success,
+      Get_Error_Message  => Get_Error_Message);
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Successful_Operation_No_Retry return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Succeed_After := 1; -- Succeed on first attempt
+
+      declare
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Retry;
+      begin
+--  Should succeed on first attempt
+         if not Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should succeed on first attempt"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Successful_Operation_No_Retry")
+            ));
+         end if;
+
+--  Should only make one attempt
+         if Result.Stats.Total_Attempts /= 1 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should make exactly 1 attempt"),
+               Details     => To_Unbounded_String ("Got: " & Result.Stats.Total_Attempts'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Successful_Operation_No_Retry")
+            ));
+         end if;
+
+--  Verify the result value
+         if Result.Result.Value /= 42 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should return correct value"),
+               Details     => To_Unbounded_String ("Expected: 42, Got: " & Result.Result.Value'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Successful_Operation_No_Retry")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Successful_Operation_No_Retry;
+
+   function Test_Eventually_Successful_Operation return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Succeed_After := 3; -- Succeed on third attempt
+
+      declare
+         Config : constant Mock_Retry.Retry_Config := (
+            Max_Attempts     => 5,
+            Initial_Delay_Ms => 10, -- Fast for testing
+            others           => <>
+         );
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Retry (Config);
+      begin
+--  Should eventually succeed
+         if not Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should eventually succeed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Eventually_Successful_Operation")
+            ));
+         end if;
+
+--  Should make exactly 3 attempts
+         if Result.Stats.Total_Attempts /= 3 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should make exactly 3 attempts"),
+               Details     => To_Unbounded_String ("Got: " & Result.Stats.Total_Attempts'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Eventually_Successful_Operation")
+            ));
+         end if;
+
+--  Should have some delay between attempts
+         if Result.Stats.Total_Delay_Ms = 0 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should have some delay between retries"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Eventually_Successful_Operation")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Eventually_Successful_Operation;
+
+   function Test_Always_Failing_Operation return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Always_Fail := True;
+
+      declare
+         Config : constant Mock_Retry.Retry_Config := (
+            Max_Attempts     => 3,
+            Initial_Delay_Ms => 10, -- Fast for testing
+            others           => <>
+         );
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Retry (Config);
+      begin
+--  Should fail after all retries
+         if Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should fail after all retries exhausted"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Always_Failing_Operation")
+            ));
+         end if;
+
+--  Should exhaust all attempts
+         if Result.Stats.Total_Attempts /= 3 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should exhaust all 3 attempts"),
+               Details     => To_Unbounded_String ("Got: " & Result.Stats.Total_Attempts'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Always_Failing_Operation")
+            ));
+         end if;
+
+--  Failed attempts should equal total attempts
+         if Result.Stats.Failed_Attempts /= Result.Stats.Total_Attempts then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("All attempts should be failed"),
+               Details     => To_Unbounded_String ("Failed: " & Result.Stats.Failed_Attempts'Image &
+                                                  ", Total: " & Result.Stats.Total_Attempts'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Always_Failing_Operation")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Always_Failing_Operation;
+
+   function Test_Exponential_Backoff_Strategy return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Always_Fail := True;
+
+      declare
+         Config : constant Mock_Retry.Retry_Config := (
+            Max_Attempts     => 3,
+            Initial_Delay_Ms => 100,
+            Backoff_Strategy => Mock_Retry.Exponential_Backoff,
+            Backoff_Multiplier => 2.0,
+            Jitter_Mode      => Mock_Retry.No_Jitter, -- No jitter for predictable testing
+            others           => <>
+         );
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Retry (Config);
+      begin
+--  Should fail but have attempted retries
+         if Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should fail with exponential backoff"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Exponential_Backoff_Strategy")
+            ));
+         end if;
+
+--  Should have accumulated delay from exponential backoff
+--  First retry: 100ms, Second retry: 200ms = ~300ms total minimum
+         if Result.Stats.Total_Delay_Ms < 250 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should have exponential backoff delays"),
+               Details     => To_Unbounded_String ("Total delay: " & Result.Stats.Total_Delay_Ms'Image & "ms"),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Exponential_Backoff_Strategy")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Exponential_Backoff_Strategy;
+
+   function Test_Linear_Backoff_Strategy return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Always_Fail := True;
+
+      declare
+         Config : constant Mock_Retry.Retry_Config := (
+            Max_Attempts     => 3,
+            Initial_Delay_Ms => 100,
+            Backoff_Strategy => Mock_Retry.Linear_Backoff,
+            Jitter_Mode      => Mock_Retry.No_Jitter,
+            others           => <>
+         );
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Retry (Config);
+      begin
+--  Should fail but have linear delays
+         if Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should fail with linear backoff"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Linear_Backoff_Strategy")
+            ));
+         end if;
+
+--  Should have some accumulated delay
+         if Result.Stats.Total_Delay_Ms < 150 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should have linear backoff delays"),
+               Details     => To_Unbounded_String ("Total delay: " & Result.Stats.Total_Delay_Ms'Image & "ms"),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Linear_Backoff_Strategy")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Linear_Backoff_Strategy;
+
+   function Test_Fixed_Delay_Strategy return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Always_Fail := True;
+
+      declare
+         Config : constant Mock_Retry.Retry_Config := (
+            Max_Attempts     => 3,
+            Initial_Delay_Ms => 100,
+            Backoff_Strategy => Mock_Retry.Fixed_Delay,
+            Jitter_Mode      => Mock_Retry.No_Jitter,
+            others           => <>
+         );
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Retry (Config);
+      begin
+--  Should fail with fixed delays
+         if Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should fail with fixed delay"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Fixed_Delay_Strategy")
+            ));
+         end if;
+
+--  Fixed delay should be approximately 100ms * 2 retries = 200ms
+         if Result.Stats.Total_Delay_Ms < 150 or Result.Stats.Total_Delay_Ms > 250 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should have fixed delays around 200ms"),
+               Details     => To_Unbounded_String ("Total delay: " & Result.Stats.Total_Delay_Ms'Image & "ms"),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Fixed_Delay_Strategy")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Fixed_Delay_Strategy;
+
+   function Test_Retry_Policy_Builder return Void_Result.Result is
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Succeed_After := 2; -- Succeed on second attempt
+
+--  Build policy using builder pattern
+      declare
+         Policy : constant Mock_Retry.Retry_Policy :=
+            Mock_Retry.Create_Policy
+               .With_Max_Attempts (3)
+               .With_Delay (50)
+               .With_Exponential_Backoff (1.5);
+
+         Result : constant Mock_Retry.Retry_Result := Mock_Retry.Execute_With_Policy (Policy);
+      begin
+--  Should succeed on second attempt
+         if not Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Policy should allow eventual success"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Retry_Policy_Builder")
+            ));
+         end if;
+
+         if Result.Stats.Total_Attempts /= 2 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should succeed on second attempt"),
+               Details     => To_Unbounded_String ("Attempts: " & Result.Stats.Total_Attempts'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Retry_Policy_Builder")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Retry_Policy_Builder;
+
+   function Test_Custom_Retry_Predicate return Void_Result.Result is
+--  Custom predicate that only retries on first attempt
+      function Should_Retry (Result : Operation_Result; Attempt : Positive) return Boolean is
+         pragma Unreferenced (Result);
+      begin
+         return Attempt = 1; -- Only retry after first failure
+      end Should_Retry;
+
+--  Instantiate custom retry
+      function Custom_Retry is new Mock_Retry.Execute_With_Custom_Retry (Should_Retry);
+   begin
+      Reset_Mock_State;
+      Global_Mock_State.Always_Fail := True;
+
+      declare
+         Config : constant Mock_Retry.Retry_Config := (
+            Max_Attempts     => 5, -- Would normally allow 5 attempts
+            Initial_Delay_Ms => 10,
+            others           => <>
+         );
+         Result : constant Mock_Retry.Retry_Result := Custom_Retry (Config);
+      begin
+--  Should fail after only 2 attempts (initial + 1 retry)
+         if Result.Success then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should fail with custom predicate"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Custom_Retry_Predicate")
+            ));
+         end if;
+
+         if Result.Stats.Total_Attempts /= 2 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Should make exactly 2 attempts with custom predicate"),
+               Details     => To_Unbounded_String ("Got: " & Result.Stats.Total_Attempts'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Custom_Retry_Predicate")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Custom_Retry_Predicate;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 8);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Func : access function return Void_Result.Result)
+      is
+         Start_Time : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+         Result     : constant Void_Result.Result := Func.all;
+         End_Time   : constant Ada.Calendar.Time := Ada.Calendar.Clock;
+         Duration   : constant Standard.Duration := Ada.Calendar."-" (End_Time, Start_Time);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Test_Result'(
+               Name           => To_Unbounded_String (Name),
+               Status         => Passed,
+               Message        => To_Unbounded_String ("Test passed"),
+               Elapsed_Time   => Duration,
+               Line_Number    => 0,
+               Correlation_ID => Null_Unbounded_String
+            );
+         else
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => Duration,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => Null_Unbounded_String
+               );
+            end;
+         end if;
+
+         Print_Test_Result (Tests (Index), Output);
+         Index := Index + 1;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("");
+      Output.Write_Line ("=== Running Retry Handler Unit Tests ===");
+      Output.Write_Line ("");
+
+--  Run all tests
+      Add_Test_Result ("Test_Successful_Operation_No_Retry", Test_Successful_Operation_No_Retry'Access);
+      Add_Test_Result ("Test_Eventually_Successful_Operation", Test_Eventually_Successful_Operation'Access);
+      Add_Test_Result ("Test_Always_Failing_Operation", Test_Always_Failing_Operation'Access);
+      Add_Test_Result ("Test_Exponential_Backoff_Strategy", Test_Exponential_Backoff_Strategy'Access);
+      Add_Test_Result ("Test_Linear_Backoff_Strategy", Test_Linear_Backoff_Strategy'Access);
+      Add_Test_Result ("Test_Fixed_Delay_Strategy", Test_Fixed_Delay_Strategy'Access);
+      Add_Test_Result ("Test_Retry_Policy_Builder", Test_Retry_Policy_Builder'Access);
+      Add_Test_Result ("Test_Custom_Retry_Predicate", Test_Custom_Retry_Predicate'Access);
+
+--  Generate summary
+      declare
+         Stats : Test_Statistics := (others => <>);
+      begin
+         for Test of Tests loop
+            Stats.Total_Tests := Stats.Total_Tests + 1;
+            case Test.Status is
+               when Passed =>
+                  Stats.Passed_Tests := Stats.Passed_Tests + 1;
+               when Failed =>
+                  Stats.Failed_Tests := Stats.Failed_Tests + 1;
+               when Skipped =>
+                  Stats.Skipped_Tests := Stats.Skipped_Tests + 1;
+               when Error =>
+                  Stats.Error_Tests := Stats.Error_Tests + 1;
+            end case;
+            Stats.Total_Duration := Stats.Total_Duration + Test.Elapsed_Time;
+         end loop;
+
+         Output.Write_Line ("");
+         Output.Write_Line ("============================================================");
+         Output.Write_Line ("Test Suite: Retry Handler Unit Tests");
+         Output.Write_Line ("============================================================");
+         Print_Test_Statistics (Stats, Output);
+
+         if Stats.Failed_Tests = 0 and Stats.Error_Tests = 0 then
+            Output.Write_Line ("Result: ALL TESTS PASSED");
+            return Test_Stats_Result.Ok (Stats);
+         else
+            Output.Write_Line ("Result: SOME TESTS FAILED");
+            return Test_Stats_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Some tests failed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Retry Handler Tests")
+            ));
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Retry_Handler_Unit;
+
+pragma Warnings (On, "subprogram body has no previous spec");

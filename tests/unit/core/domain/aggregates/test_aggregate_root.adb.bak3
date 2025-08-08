@@ -1,0 +1,821 @@
+--   =============================================================================
+--   Test_Aggregate_Root - Implementation
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+--   with Ada.Calendar;
+with Abohlib.Core.Domain.Aggregates.Aggregate_Root;
+with Abohlib.Core.Domain.Events;
+with Abohlib.Core.Domain.Value_Objects.Type_Safe_Generic_Id;
+
+package body Test_Aggregate_Root is
+
+--    ==========================================================================
+--    Test Aggregate Setup
+--    ==========================================================================
+
+--    Test ID type
+   type Test_Id_Category is null record;
+
+   package Test_Id_Pkg is new
+      Abohlib.Core.Domain.Value_Objects.Type_Safe_Generic_Id.Generic_ID_Type
+        (Category      => Test_Id_Category,
+         Category_Name => "Test",
+         Prefix        => "TST");
+
+   subtype Test_Id is Test_Id_Pkg.ID;
+   use Test_Id_Pkg;  -- For operators
+
+   function Test_Id_To_String (Id : Test_Id) return String is
+      (Test_Id_Pkg.To_String (Id));
+
+--    Test events
+   type Test_Event is abstract new Abohlib.Core.Domain.Events.Domain_Event with record
+      Aggregate_Id : Test_Id;
+   end record;
+
+   type Created_Event is new Test_Event with record
+      Name : Unbounded_String;
+   end record;
+
+   overriding function Event_Name (Event : Created_Event) return String is
+      ("TestCreated");
+
+   type Updated_Event is new Test_Event with record
+      Field_Name : Unbounded_String;
+      New_Value  : Unbounded_String;
+   end record;
+
+   overriding function Event_Name (Event : Updated_Event) return String is
+      ("TestUpdated");
+
+   type Counter_Incremented_Event is new Test_Event with record
+      Increment : Natural;
+   end record;
+
+   overriding function Event_Name (Event : Counter_Incremented_Event) return String is
+      ("CounterIncremented");
+
+--    Test aggregate
+   package Test_Aggregate_Base is new
+      Abohlib.Core.Domain.Aggregates.Aggregate_Root
+        (Id_Type        => Test_Id,
+         Aggregate_Name => "TestAggregate",
+         Id_To_String   => Test_Id_To_String);
+
+   type Test_Aggregate is new Test_Aggregate_Base.Aggregate_Root_Type with record
+      Name    : Unbounded_String;
+      Counter : Natural := 0;
+      Is_Valid_State : Boolean := True;
+   end record;
+
+   overriding function Is_Valid (Self : Test_Aggregate) return Boolean is
+      (Self.Is_Valid_State and Self.Name /= Null_Unbounded_String);
+
+   overriding procedure Apply_Event
+     (Self  : in out Test_Aggregate;
+      Event : Abohlib.Core.Domain.Events.Domain_Event'Class)
+   is
+   begin
+      if Event in Created_Event'Class then
+         declare
+            E : Created_Event renames Created_Event (Event);
+         begin
+            Self.Name := E.Name;
+         end;
+      elsif Event in Updated_Event'Class then
+         declare
+            E : Updated_Event renames Updated_Event (Event);
+         begin
+            if E.Field_Name = To_Unbounded_String ("Name") then
+               Self.Name := E.New_Value;
+            end if;
+         end;
+      elsif Event in Counter_Incremented_Event'Class then
+         declare
+            E : Counter_Incremented_Event renames Counter_Incremented_Event (Event);
+         begin
+            Self.Counter := Self.Counter + E.Increment;
+         end;
+      end if;
+   end Apply_Event;
+
+--    ==========================================================================
+--    Test Functions
+--    ==========================================================================
+
+   function Test_Aggregate_Creation return Void_Result.Result is
+      Agg : Test_Aggregate;
+   begin
+--     Verify initial state
+      if not Agg.Is_New then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("New aggregate should have Is_New = True"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Aggregate_Creation")
+         ));
+      end if;
+
+      if Agg.Get_Version /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("New aggregate should have version 0"),
+            Details     => To_Unbounded_String ("Version: " & Agg.Get_Version'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Aggregate_Creation")
+         ));
+      end if;
+
+      if Agg.Has_Uncommitted_Events then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("New aggregate should have no uncommitted events"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Aggregate_Creation")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Aggregate_Creation;
+
+   function Test_Set_Id return Void_Result.Result is
+      use Test_Aggregate_Base;
+      Agg : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+   begin
+--    Set ID on new aggregate
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Set_Id (Id);
+      begin
+         if not Aggregate_Result.Is_Ok (Result) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to set ID on new aggregate"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Set_Id")
+            ));
+         end if;
+      end;
+
+--    Verify ID was set
+      if Agg.Get_Id /= Id then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("ID not set correctly"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Set_Id")
+         ));
+      end if;
+
+--    Try to set ID again (should fail)
+      Agg.Increment_Version; -- Make it not new
+
+--    Verify it's not new anymore
+      if Agg.Is_New then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Aggregate should not be new after version increment"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Set_Id")
+         ));
+      end if;
+
+--    Since Set_Id has a precondition Is_New, we can't call it on non-new aggregate
+--    This is the expected behavior - the precondition prevents misuse
+
+      return Void_Result.Ok (True);
+   end Test_Set_Id;
+
+   function Test_Raise_Event return Void_Result.Result is
+      use Test_Aggregate_Base;
+      Agg : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+   begin
+--    Set ID
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Set_Id (Id);
+         pragma Unreferenced (Result);
+      begin
+         null;
+      end;
+
+--    Raise a created event
+      declare
+         Event : Created_Event;
+      begin
+         Abohlib.Core.Domain.Events.Initialize_Event (Event);
+         Event.Aggregate_Id := Id;
+         Event.Name := To_Unbounded_String ("Test Aggregate");
+         Agg.Raise_Event (Event);
+      end;
+
+--    Verify event was raised
+      if not Agg.Has_Uncommitted_Events then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should have uncommitted events after raising event"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Raise_Event")
+         ));
+      end if;
+
+--    Verify aggregate state was updated
+      if Agg.Name /= To_Unbounded_String ("Test Aggregate") then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Event not applied to aggregate state"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Raise_Event")
+         ));
+      end if;
+
+--    Verify event count
+      declare
+         Events : constant Abohlib.Core.Domain.Events.Event_List :=
+            Agg.Get_Uncommitted_Events;
+      begin
+         if Natural (Events.Length) /= 1 then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Wrong number of uncommitted events"),
+               Details     => To_Unbounded_String ("Expected: 1, Got: " & Natural (Events.Length)'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Raise_Event")
+            ));
+         end if;
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Raise_Event;
+
+   function Test_Mark_Events_Committed return Void_Result.Result is
+      use Test_Aggregate_Base;
+      Agg : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+   begin
+--    Set ID and raise events
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Set_Id (Id);
+         pragma Unreferenced (Result);
+      begin
+         null;
+      end;
+
+--    Raise multiple events
+      for I in 1 .. 3 loop
+         declare
+            Event : Counter_Incremented_Event;
+         begin
+            Abohlib.Core.Domain.Events.Initialize_Event (Event);
+            Event.Aggregate_Id := Id;
+            Event.Increment := I;
+            Agg.Raise_Event (Event);
+         end;
+      end loop;
+
+--    Verify events exist
+      if not Agg.Has_Uncommitted_Events then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should have uncommitted events"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Mark_Events_Committed")
+         ));
+      end if;
+
+--    Mark as committed
+      Agg.Mark_Events_As_Committed;
+
+--    Verify no uncommitted events
+      if Agg.Has_Uncommitted_Events then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should have no uncommitted events after marking committed"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Mark_Events_Committed")
+         ));
+      end if;
+
+--    Verify state is preserved
+      if Agg.Counter /= 6 then -- 1 + 2 + 3 = 6
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Aggregate state should be preserved"),
+            Details     => To_Unbounded_String ("Expected counter: 6, Got: " & Agg.Counter'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Mark_Events_Committed")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Mark_Events_Committed;
+
+   function Test_Load_From_History return Void_Result.Result is
+      use Test_Aggregate_Base;
+      use Abohlib.Core.Domain.Events;
+
+      Agg : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+      History : Event_List;
+   begin
+--    Create event history
+      declare
+         Event1 : aliased Created_Event;
+         Event2 : aliased Updated_Event;
+         Event3 : aliased Counter_Incremented_Event;
+      begin
+         Initialize_Event (Event1);
+         Event1.Aggregate_Id := Id;
+         Event1.Name := To_Unbounded_String ("Historical Aggregate");
+         History.Append (new Created_Event'(Event1));
+
+         Initialize_Event (Event2);
+         Event2.Aggregate_Id := Id;
+         Event2.Field_Name := To_Unbounded_String ("Name");
+         Event2.New_Value := To_Unbounded_String ("Updated Name");
+         History.Append (new Updated_Event'(Event2));
+
+         Initialize_Event (Event3);
+         Event3.Aggregate_Id := Id;
+         Event3.Increment := 10;
+         History.Append (new Counter_Incremented_Event'(Event3));
+      end;
+
+--    Load from history
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Load_From_History (History);
+      begin
+         if not Aggregate_Result.Is_Ok (Result) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to load from history"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Load_From_History")
+            ));
+         end if;
+      end;
+
+--    Verify state
+      if Agg.Name /= To_Unbounded_String ("Updated Name") then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Name not loaded correctly from history"),
+            Details     => To_Unbounded_String ("Got: " & To_String (Agg.Name)),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Load_From_History")
+         ));
+      end if;
+
+      if Agg.Counter /= 10 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Counter not loaded correctly from history"),
+            Details     => To_Unbounded_String ("Expected: 10, Got: " & Agg.Counter'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Load_From_History")
+         ));
+      end if;
+
+--    Verify version
+      if Agg.Get_Version /= 3 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Version should equal number of events"),
+            Details     => To_Unbounded_String ("Expected: 3, Got: " & Agg.Get_Version'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Load_From_History")
+         ));
+      end if;
+
+--    Verify no uncommitted events
+      if Agg.Has_Uncommitted_Events then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should have no uncommitted events after loading history"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Load_From_History")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Load_From_History;
+
+   function Test_Version_Management return Void_Result.Result is
+      Agg : Test_Aggregate;
+   begin
+--    Initial version should be 0
+      if Agg.Get_Version /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Initial version should be 0"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Version_Management")
+         ));
+      end if;
+
+--    Increment version
+      Agg.Increment_Version;
+
+      if Agg.Get_Version /= 1 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Version should be 1 after increment"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Version_Management")
+         ));
+      end if;
+
+--    Multiple increments
+      for I in 2 .. 5 loop
+         Agg.Increment_Version;
+      end loop;
+
+      if Agg.Get_Version /= 5 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Version should be 5 after 5 increments"),
+            Details     => To_Unbounded_String ("Got: " & Agg.Get_Version'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Version_Management")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Version_Management;
+
+   function Test_Change_Tracking return Void_Result.Result is
+      use Test_Aggregate_Base;
+      Agg : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+   begin
+--    Set ID
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Set_Id (Id);
+         pragma Unreferenced (Result);
+      begin
+         null;
+      end;
+
+--    Should not be tracking changes initially
+      if Agg.Is_Tracking_Changes then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should not be tracking changes initially"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Change_Tracking")
+         ));
+      end if;
+
+--    Begin tracking changes
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Begin_Changes;
+      begin
+         if not Aggregate_Result.Is_Ok (Result) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to begin change tracking"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Change_Tracking")
+            ));
+         end if;
+      end;
+
+--    Should be tracking now
+      if not Agg.Is_Tracking_Changes then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should be tracking changes after Begin_Changes"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Change_Tracking")
+         ));
+      end if;
+
+--    Verify we cannot begin changes again (precondition would be violated)
+--    Since Begin_Changes has precondition "not Self.Is_Tracking_Changes",
+--    we verify the state rather than attempting to violate the precondition
+      if not Agg.Is_Tracking_Changes then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should still be tracking changes"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Change_Tracking")
+         ));
+      end if;
+
+--    Commit changes
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Commit_Changes;
+      begin
+         if not Aggregate_Result.Is_Ok (Result) then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Failed to commit changes"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Change_Tracking")
+            ));
+         end if;
+      end;
+
+--    Should not be tracking after commit
+      if Agg.Is_Tracking_Changes then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Should not be tracking changes after commit"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Change_Tracking")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Change_Tracking;
+
+   function Test_Rollback_Changes return Void_Result.Result is
+      use Test_Aggregate_Base;
+      Agg : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+   begin
+--    Set ID and initial state
+      declare
+         Result : constant Aggregate_Result.Result := Agg.Set_Id (Id);
+         pragma Unreferenced (Result);
+      begin
+         null;
+      end;
+
+--    Set initial values
+      declare
+         Event : Created_Event;
+      begin
+         Abohlib.Core.Domain.Events.Initialize_Event (Event);
+         Event.Aggregate_Id := Id;
+         Event.Name := To_Unbounded_String ("Original Name");
+         Agg.Raise_Event (Event);
+      end;
+
+      Agg.Mark_Events_As_Committed;
+      Agg.Increment_Version;
+
+--    Remember original state
+      declare
+         Original_Version : constant Natural := Agg.Get_Version;
+         Original_Name : constant Unbounded_String := Agg.Name;
+      begin
+--     Begin tracking changes
+         declare
+            Result : constant Aggregate_Result.Result := Agg.Begin_Changes;
+            pragma Unreferenced (Result);
+         begin
+            null;
+         end;
+
+--     Make changes
+         declare
+            Event : Updated_Event;
+         begin
+            Abohlib.Core.Domain.Events.Initialize_Event (Event);
+            Event.Aggregate_Id := Id;
+            Event.Field_Name := To_Unbounded_String ("Name");
+            Event.New_Value := To_Unbounded_String ("Modified Name");
+            Agg.Raise_Event (Event);
+         end;
+
+--     Increment version
+         Agg.Increment_Version;
+
+--     Verify changes were made
+         if Agg.Name = Original_Name then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Name should have changed"),
+               Details     => Null_Unbounded_String,
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Rollback_Changes")
+            ));
+         end if;
+
+--     Rollback
+         declare
+            Result : constant Aggregate_Result.Result := Agg.Rollback_Changes;
+         begin
+            if not Aggregate_Result.Is_Ok (Result) then
+               return Void_Result.Err (Test_Error'(
+                  Kind        => Assertion_Failed,
+                  Message     => To_Unbounded_String ("Failed to rollback changes"),
+                  Details     => Null_Unbounded_String,
+                  Line_Number => 0,
+                  Test_Name   => To_Unbounded_String ("Test_Rollback_Changes")
+               ));
+            end if;
+         end;
+
+--     Verify rollback
+         if Agg.Get_Version /= Original_Version then
+            return Void_Result.Err (Test_Error'(
+               Kind        => Assertion_Failed,
+               Message     => To_Unbounded_String ("Version not rolled back"),
+               Details     => To_Unbounded_String ("Expected: " & Original_Version'Image &
+                                                  ", Got: " & Agg.Get_Version'Image),
+               Line_Number => 0,
+               Test_Name   => To_Unbounded_String ("Test_Rollback_Changes")
+            ));
+         end if;
+
+--     Note: Event rollback doesn't affect already applied state changes
+--     This is a limitation of the current implementation
+      end;
+
+      return Void_Result.Ok (True);
+   end Test_Rollback_Changes;
+
+   function Test_Aggregate_Validation return Void_Result.Result is
+      Agg : Test_Aggregate;
+   begin
+--    Aggregate should be invalid without name
+      Agg.Name := Null_Unbounded_String;
+      if Agg.Is_Valid then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Aggregate should be invalid without name"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Aggregate_Validation")
+         ));
+      end if;
+
+--    Set name
+      Agg.Name := To_Unbounded_String ("Valid Name");
+      if not Agg.Is_Valid then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Aggregate should be valid with name"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Aggregate_Validation")
+         ));
+      end if;
+
+--    Test custom validation
+      Agg.Is_Valid_State := False;
+      if Agg.Is_Valid then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Aggregate should be invalid when Is_Valid_State is false"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Aggregate_Validation")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Aggregate_Validation;
+
+   function Test_Optimistic_Concurrency return Void_Result.Result is
+      use Test_Aggregate_Base;
+      Agg1, Agg2 : Test_Aggregate;
+      Id : constant Test_Id := Test_Id_Pkg.New_ID;
+   begin
+--    Set up both aggregates with same ID
+      declare
+         Result1 : constant Aggregate_Result.Result := Agg1.Set_Id (Id);
+         Result2 : constant Aggregate_Result.Result := Agg2.Set_Id (Id);
+         pragma Unreferenced (Result1, Result2);
+      begin
+         null;
+      end;
+
+--    Both start at version 0
+      if Agg1.Get_Version /= 0 or Agg2.Get_Version /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Both aggregates should start at version 0"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Optimistic_Concurrency")
+         ));
+      end if;
+
+--    Simulate concurrent modifications
+      Agg1.Increment_Version;  -- Agg1 now at version 1
+      Agg2.Increment_Version;  -- Agg2 also at version 1
+
+--    In a real repository, saving Agg2 would fail due to version conflict
+--    The repository would check that the expected version matches the stored version
+
+--    Simulate more changes
+      Agg1.Increment_Version;  -- Agg1 at version 2
+
+--    Version comparison would detect conflict
+      if Agg1.Get_Version = Agg2.Get_Version then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Versions should differ after independent updates"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Optimistic_Concurrency")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Optimistic_Concurrency;
+
+--    ==========================================================================
+--    Run All Tests
+--    ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Tests : Test_Results_Array (1 .. 10);
+      Index : Positive := 1;
+
+      procedure Add_Test_Result
+        (Name : String;
+         Test_Func : Test_Function_Access)
+      is
+         Result : constant Test_Result_Pkg.Result :=
+            Run_Test (Name, Test_Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+            Index := Index + 1;
+         else
+--     Handle test execution error
+            declare
+               Error : constant Test_Error := Result.Get_Err;
+            begin
+               Tests (Index) := Test_Result'(
+                  Name           => To_Unbounded_String (Name),
+                  Status         => Failed,
+                  Message        => Error.Message,
+                  Elapsed_Time   => 0.0,
+                  Line_Number    => Error.Line_Number,
+                  Correlation_ID => To_Unbounded_String ("TEST-" & Name)
+               );
+               Print_Test_Result (Tests (Index), Output);
+               Index := Index + 1;
+            end;
+         end if;
+      end Add_Test_Result;
+
+   begin
+      Output.Write_Line ("=== Running Aggregate Root Unit Tests ===");
+      Output.Write_Line ("");
+
+--    Run all tests
+      Add_Test_Result ("Test_Aggregate_Creation", Test_Aggregate_Creation'Access);
+      Add_Test_Result ("Test_Set_Id", Test_Set_Id'Access);
+      Add_Test_Result ("Test_Raise_Event", Test_Raise_Event'Access);
+      Add_Test_Result ("Test_Mark_Events_Committed", Test_Mark_Events_Committed'Access);
+      Add_Test_Result ("Test_Load_From_History", Test_Load_From_History'Access);
+      Add_Test_Result ("Test_Version_Management", Test_Version_Management'Access);
+      Add_Test_Result ("Test_Change_Tracking", Test_Change_Tracking'Access);
+      Add_Test_Result ("Test_Rollback_Changes", Test_Rollback_Changes'Access);
+      Add_Test_Result ("Test_Aggregate_Validation", Test_Aggregate_Validation'Access);
+      Add_Test_Result ("Test_Optimistic_Concurrency", Test_Optimistic_Concurrency'Access);
+
+--    Generate summary
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Aggregate_Root_Tests", Tests (1 .. Index - 1), Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Aggregate Root Unit Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Aggregate_Root;

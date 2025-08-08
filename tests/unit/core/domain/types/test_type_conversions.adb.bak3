@@ -1,0 +1,667 @@
+--   =============================================================================
+--   Test_Type_Conversions - Implementation
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Abohlib.Core.Domain.Types.Bytes;
+with Abohlib.Core.Domain.Types.Time;
+with Abohlib.Core.Domain.Types.Performance;
+with Abohlib.Core.Domain.Constants.Bytes;
+
+package body Test_Type_Conversions is
+
+   use Abohlib.Core.Domain.Types.Bytes;
+   use Abohlib.Core.Domain.Types.Time;
+   use Abohlib.Core.Domain.Types.Performance;
+   use Abohlib.Core.Domain.Constants.Bytes;
+
+--   ==========================================================================
+--   Test SI_Bytes_Type ↔ Long_Long_Integer conversions
+--   ==========================================================================
+
+   function Test_SI_Bytes_To_Long_Long_Integer
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Bytes : constant SI_Bytes_Type := SI_Bytes_Type (1_234_567_890);
+      Result : constant Long_Long_Integer := To_Long_Long_Integer (Bytes);
+   begin
+      if Result /= 1_234_567_890 then
+         Output.Write_Line ("FAIL: To_Long_Long_Integer - Expected 1234567890, got" &
+                           Long_Long_Integer'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_SI_Bytes_To_Long_Long_Integer;
+
+   function Test_Long_Long_Integer_To_SI_Bytes
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Value : constant Long_Long_Integer := 9_876_543_210;
+      Result : constant SI_Bytes_Type := From_Long_Long_Integer (Value);
+   begin
+      if Long_Long_Integer (Result) /= Value then
+         Output.Write_Line ("FAIL: From_Long_Long_Integer - Expected" &
+                           Long_Long_Integer'Image (Value) & ", got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Long_Long_Integer_To_SI_Bytes;
+
+   function Test_Long_Long_Integer_Boundary
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Zero : constant Long_Long_Integer := 0;
+      Result_Zero : constant SI_Bytes_Type := From_Long_Long_Integer (Zero);
+   begin
+      if Long_Long_Integer (Result_Zero) /= 0 then
+         Output.Write_Line ("FAIL: From_Long_Long_Integer with zero - Expected 0, got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (Result_Zero)));
+         return False;
+      end if;
+      return True;
+   end Test_Long_Long_Integer_Boundary;
+
+--   ==========================================================================
+--   Test Natural ↔ SI_Bytes_Type conversions
+--   ==========================================================================
+
+   function Test_Natural_To_SI_Bytes
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Value : constant Natural := 1024;
+      Result : constant SI_Bytes_Type := From_Natural (Value);
+   begin
+      if Long_Long_Integer (Result) /= 1024 then
+         Output.Write_Line ("FAIL: From_Natural - Expected 1024, got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Natural_To_SI_Bytes;
+
+   function Test_SI_Bytes_To_Natural
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Bytes : constant SI_Bytes_Type := SI_Bytes_Type (2048);
+      Result : constant Natural := To_Natural (Bytes);
+   begin
+      if Result /= 2048 then
+         Output.Write_Line ("FAIL: To_Natural - Expected 2048, got" &
+                           Natural'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_SI_Bytes_To_Natural;
+
+   function Test_Natural_Boundary_Values
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Zero_Result : constant SI_Bytes_Type := From_Natural (0);
+      Max_Safe : constant Natural := 1_000_000;
+      Max_Result : constant SI_Bytes_Type := From_Natural (Max_Safe);
+   begin
+      if To_Natural (Zero_Result) /= 0 then
+         Output.Write_Line ("FAIL: Natural zero conversion - Expected 0, got" &
+                           Natural'Image (To_Natural (Zero_Result)));
+         return False;
+      end if;
+
+      if To_Natural (Max_Result) /= Max_Safe then
+         Output.Write_Line ("FAIL: Natural max safe conversion - Expected" &
+                           Natural'Image (Max_Safe) & ", got" &
+                           Natural'Image (To_Natural (Max_Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Natural_Boundary_Values;
+
+--   ==========================================================================
+--   Test Duration ↔ Milliseconds_Type conversions
+--   ==========================================================================
+
+   function Test_Duration_To_Milliseconds
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      D : constant Duration := 1.5;  -- 1.5 seconds
+      Result : constant Milliseconds_Type := To_Milliseconds (D);
+   begin
+      if Natural (Result) /= 1500 then
+         Output.Write_Line ("FAIL: To_Milliseconds - Expected 1500, got" &
+                           Natural'Image (Natural (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Duration_To_Milliseconds;
+
+   function Test_Milliseconds_To_Duration
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Ms : constant Milliseconds_Type := 2500;  -- 2500 ms
+      Result : constant Duration := From_Milliseconds (Ms);
+      Expected : constant Duration := 2.5;
+   begin
+      if abs (Result - Expected) >= 0.001 then
+         Output.Write_Line ("FAIL: From_Milliseconds - Expected 2.5, got" &
+                           Duration'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Milliseconds_To_Duration;
+
+   function Test_Duration_Precision
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Small_D : constant Duration := 0.001;  -- 1 ms
+      Small_Result : constant Milliseconds_Type := To_Milliseconds (Small_D);
+      Zero_D : constant Duration := 0.0;
+      Zero_Result : constant Milliseconds_Type := To_Milliseconds (Zero_D);
+   begin
+      if Natural (Small_Result) /= 1 then
+         Output.Write_Line ("FAIL: Small duration conversion - Expected 1, got" &
+                           Natural'Image (Natural (Small_Result)));
+         return False;
+      end if;
+
+      if Natural (Zero_Result) /= 0 then
+         Output.Write_Line ("FAIL: Zero duration conversion - Expected 0, got" &
+                           Natural'Image (Natural (Zero_Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Duration_Precision;
+
+--   ==========================================================================
+--   Test Calculate_MB_Per_Second helper
+--   ==========================================================================
+
+   function Test_Calculate_MB_Per_Second
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Bytes_1MB : constant SI_Bytes_Type := SI_MB;
+      Duration_1s : constant Duration := 1.0;
+      Result : constant MB_Per_Second_Type := Calculate_MB_Per_Second (Bytes_1MB, Duration_1s);
+   begin
+      if abs (Float (Result) - 1.0) >= 0.001 then
+         Output.Write_Line ("FAIL: Calculate_MB_Per_Second basic - Expected 1.0, got" &
+                           Float'Image (Float (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Calculate_MB_Per_Second;
+
+   function Test_Calculate_MB_Per_Second_Complex
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Bytes_10MB : constant SI_Bytes_Type := From_MB (10);  -- 10 MB using new conversion function
+      Duration_2_5s : constant Duration := 2.5;
+      Result : constant MB_Per_Second_Type := Calculate_MB_Per_Second (Bytes_10MB, Duration_2_5s);
+   begin
+      if abs (Float (Result) - 4.0) >= 0.001 then
+         Output.Write_Line ("FAIL: Calculate_MB_Per_Second complex - Expected 4.0, got" &
+                           Float'Image (Float (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Calculate_MB_Per_Second_Complex;
+
+--   ==========================================================================
+--   Test Calculate_Percentage helper
+--   ==========================================================================
+
+   function Test_Calculate_Percentage_Basic
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Part : constant SI_Bytes_Type := SI_Bytes_Type (50);
+      Whole : constant SI_Bytes_Type := SI_Bytes_Type (100);
+      Result : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+   begin
+      if abs (Float (Result) - 50.0) >= 0.01 then
+         Output.Write_Line ("FAIL: Calculate_Percentage 50% - Expected 50.0, got" &
+                           Float'Image (Float (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Calculate_Percentage_Basic;
+
+   function Test_Calculate_Percentage_Complex
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Part : constant SI_Bytes_Type := SI_Bytes_Type (75);
+      Whole : constant SI_Bytes_Type := SI_Bytes_Type (200);
+      Result : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+   begin
+      if abs (Float (Result) - 37.5) >= 0.01 then
+         Output.Write_Line ("FAIL: Calculate_Percentage 37.5% - Expected 37.5, got" &
+                           Float'Image (Float (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Calculate_Percentage_Complex;
+
+   function Test_Calculate_Percentage_Boundaries
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Full : constant SI_Bytes_Type := SI_Bytes_Type (100);
+      Result_Full : constant Percentage_Type := Calculate_Percentage (Full, Full);
+      Zero : constant SI_Bytes_Type := SI_Bytes_Type (0);
+      Whole : constant SI_Bytes_Type := SI_Bytes_Type (100);
+      Result_Zero : constant Percentage_Type := Calculate_Percentage (Zero, Whole);
+   begin
+      if abs (Float (Result_Full) - 100.0) >= 0.01 then
+         Output.Write_Line ("FAIL: Calculate_Percentage 100% - Expected 100.0, got" &
+                           Float'Image (Float (Result_Full)));
+         return False;
+      end if;
+
+      if abs (Float (Result_Zero) - 0.0) >= 0.01 then
+         Output.Write_Line ("FAIL: Calculate_Percentage 0% - Expected 0.0, got" &
+                           Float'Image (Float (Result_Zero)));
+         return False;
+      end if;
+      return True;
+   end Test_Calculate_Percentage_Boundaries;
+
+--   ==========================================================================
+--   Test existing Calculate_Compression_Ratio
+--   ==========================================================================
+
+   function Test_Compression_Ratio
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Original : constant SI_Bytes_Type := SI_Bytes_Type (1000);
+      Compressed : constant SI_Bytes_Type := SI_Bytes_Type (250);
+--   Note: The function calculates compressed/original = 0.25
+      Result : constant Compression_Ratio_Type := Calculate_Compression_Ratio (Original, Compressed);
+   begin
+      if abs (Float (Result) - 0.25) >= 0.001 then
+         Output.Write_Line ("FAIL: Calculate_Compression_Ratio - Expected 0.25, got" &
+                           Float'Image (Float (Result)));
+         return False;
+      end if;
+      return True;
+   end Test_Compression_Ratio;
+
+--   ==========================================================================
+--   Test new byte conversion functions
+--   ==========================================================================
+
+   function Test_SI_IEC_Conversions
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      SI_Value : constant SI_Bytes_Type := SI_Bytes_Type (1024);
+      IEC_Result : constant IEC_Bytes_Type := To_IEC_Bytes (SI_Value);
+      SI_Back : constant SI_Bytes_Type := To_SI_Bytes (IEC_Result);
+   begin
+      if Long_Long_Integer (IEC_Result) /= 1024 then
+         Output.Write_Line ("FAIL: To_IEC_Bytes - Expected 1024, got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (IEC_Result)));
+         return False;
+      end if;
+
+      if SI_Back /= SI_Value then
+         Output.Write_Line ("FAIL: To_SI_Bytes round trip - Expected" &
+                           Long_Long_Integer'Image (Long_Long_Integer (SI_Value)) &
+                           ", got" & Long_Long_Integer'Image (Long_Long_Integer (SI_Back)));
+         return False;
+      end if;
+      return True;
+   end Test_SI_IEC_Conversions;
+
+   function Test_From_KB_MB_GB
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      KB_Result : constant SI_Bytes_Type := From_KB (5);
+      MB_Result : constant SI_Bytes_Type := From_MB (2);
+      GB_Result : constant SI_Bytes_Type := From_GB (1);
+   begin
+      if Long_Long_Integer (KB_Result) /= 5_000 then
+         Output.Write_Line ("FAIL: From_KB - Expected 5000, got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (KB_Result)));
+         return False;
+      end if;
+
+      if Long_Long_Integer (MB_Result) /= 2_000_000 then
+         Output.Write_Line ("FAIL: From_MB - Expected 2000000, got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (MB_Result)));
+         return False;
+      end if;
+
+      if Long_Long_Integer (GB_Result) /= 1_000_000_000 then
+         Output.Write_Line ("FAIL: From_GB - Expected 1000000000, got" &
+                           Long_Long_Integer'Image (Long_Long_Integer (GB_Result)));
+         return False;
+      end if;
+      return True;
+   end Test_From_KB_MB_GB;
+
+   function Test_From_KB_MB_GB_Overflow_Protection
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Max_Valid_KB : constant Long_Long_Integer := Long_Long_Integer'Last / 1_000;
+      Max_Valid_MB : constant Long_Long_Integer := Long_Long_Integer'Last / 1_000_000;
+      Max_Valid_GB : constant Long_Long_Integer := Long_Long_Integer'Last / 1_000_000_000;
+      Result : SI_Bytes_Type;
+      pragma Unreferenced (Result);
+   begin
+--   Test maximum valid values work
+      begin
+         Result := From_KB (Max_Valid_KB);
+         Result := From_MB (Max_Valid_MB);
+         Result := From_GB (Max_Valid_GB);
+      exception
+         when others =>
+            Output.Write_Line ("FAIL: Maximum valid values should not raise exceptions");
+            return False;
+      end;
+
+--   Test overflow protection
+      begin
+         Result := From_KB (Max_Valid_KB + 1);
+         Output.Write_Line ("FAIL: From_KB overflow not detected");
+         return False;
+      exception
+         when others =>
+            null;  -- Expected
+      end;
+
+      begin
+         Result := From_MB (Max_Valid_MB + 1);
+         Output.Write_Line ("FAIL: From_MB overflow not detected");
+         return False;
+      exception
+         when others =>
+            null;  -- Expected
+      end;
+
+      begin
+         Result := From_GB (Max_Valid_GB + 1);
+         Output.Write_Line ("FAIL: From_GB overflow not detected");
+         return False;
+      exception
+         when others =>
+            null;  -- Expected
+      end;
+
+--   Test negative value protection
+      begin
+         Result := From_KB (-1);
+         Output.Write_Line ("FAIL: From_KB negative value not rejected");
+         return False;
+      exception
+         when others =>
+            null;  -- Expected
+      end;
+
+      return True;
+   end Test_From_KB_MB_GB_Overflow_Protection;
+
+--   ==========================================================================
+--   Test new time conversion functions
+--   ==========================================================================
+
+   function Test_Milliseconds_Seconds_Conversions
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Ms : constant Milliseconds_Type := 5000;  -- 5000 ms
+      Sec_Result : constant Seconds_Type := To_Seconds (Ms);
+      Ms_Back : constant Milliseconds_Type := From_Seconds (Sec_Result);
+   begin
+      if abs (Duration (Sec_Result) - 5.0) >= 0.001 then
+         Output.Write_Line ("FAIL: To_Seconds - Expected 5.0, got" &
+                           Duration'Image (Duration (Sec_Result)));
+         return False;
+      end if;
+
+      if Natural (Ms_Back) /= Natural (Ms) then
+         Output.Write_Line ("FAIL: From_Seconds round trip - Expected" &
+                           Natural'Image (Natural (Ms)) & ", got" &
+                           Natural'Image (Natural (Ms_Back)));
+         return False;
+      end if;
+      return True;
+   end Test_Milliseconds_Seconds_Conversions;
+
+   function Test_Timeout_Delay_To_Duration
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+      Timeout : constant Timeout_Ms_Type := 3000;  -- 3 second timeout
+      Delay_Ms : constant Delay_Ms_Type := 1500;   -- 1.5 second delay
+      Timeout_Duration : constant Duration := To_Duration (Timeout);
+      Delay_Duration : constant Duration := To_Duration (Delay_Ms);
+   begin
+      if abs (Timeout_Duration - 3.0) >= 0.001 then
+         Output.Write_Line ("FAIL: Timeout to Duration - Expected 3.0, got" &
+                           Duration'Image (Timeout_Duration));
+         return False;
+      end if;
+
+      if abs (Delay_Duration - 1.5) >= 0.001 then
+         Output.Write_Line ("FAIL: Delay_Ms to Duration - Expected 1.5, got" &
+                           Duration'Image (Delay_Duration));
+         return False;
+      end if;
+      return True;
+   end Test_Timeout_Delay_To_Duration;
+
+--   ==========================================================================
+--   Performance Type Conversion Tests
+--   ==========================================================================
+
+   function Test_Compression_Ratio_Float_Conversions
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+--  Test values
+      Original_Ratio : constant Compression_Ratio_Type := 0.75;  -- 75% of original
+      Float_Value : constant Float := 0.25;  -- 25% of original
+
+--  Forward conversions using named functions
+      Ratio_To_Float : constant Float := Compression_Ratio_To_Float (Original_Ratio);
+      Float_To_Ratio : constant Compression_Ratio_Type := Float_To_Compression_Ratio (Float_Value);
+
+--  Round-trip tests
+      Round_Trip_1 : constant Compression_Ratio_Type :=
+         Float_To_Compression_Ratio (Compression_Ratio_To_Float (Original_Ratio));
+      Round_Trip_2 : constant Float := Compression_Ratio_To_Float (Float_To_Compression_Ratio (Float_Value));
+   begin
+--  Test basic conversions
+      if abs (Ratio_To_Float - 0.75) >= 0.001 then
+         Output.Write_Line ("FAIL: Compression ratio to Float - Expected 0.75, got" &
+                           Float'Image (Ratio_To_Float));
+         return False;
+      end if;
+
+      if abs (Float (Float_To_Ratio) - 0.25) >= 0.001 then
+         Output.Write_Line ("FAIL: Float to Compression ratio - Expected 0.25, got" &
+                           Float'Image (Float (Float_To_Ratio)));
+         return False;
+      end if;
+
+--  Test round-trip conversions
+      if abs (Float (Round_Trip_1) - 0.75) >= 0.001 then
+         Output.Write_Line ("FAIL: Round-trip 1 - Expected 0.75, got" &
+                           Float'Image (Float (Round_Trip_1)));
+         return False;
+      end if;
+
+      if abs (Round_Trip_2 - 0.25) >= 0.001 then
+         Output.Write_Line ("FAIL: Round-trip 2 - Expected 0.25, got" &
+                           Float'Image (Round_Trip_2));
+         return False;
+      end if;
+
+      return True;
+   end Test_Compression_Ratio_Float_Conversions;
+
+   function Test_Speed_Float_Conversions
+     (Output : access Test_Output_Port'Class) return Boolean
+   is
+--  Test values
+      Original_Speed : constant MB_Per_Second_Type := 125.5;  -- 125.5 MB/s
+      Processing_Speed : constant Processing_Speed_Type := 89.7;  -- 89.7 items/s
+      Float_Value : constant Float := 42.3;
+
+--  Forward conversions using named functions
+      MB_Speed_Float : constant Float := MB_Speed_To_Float (Original_Speed);
+      Proc_Speed_Float : constant Float := Processing_Speed_To_Float (Processing_Speed);
+      Float_MB_Speed : constant MB_Per_Second_Type := Float_To_MB_Speed (Float_Value);
+      Float_Proc_Speed : constant Processing_Speed_Type := Float_To_Processing_Speed (Float_Value);
+
+--  Round-trip tests
+      Round_Trip_MB : constant MB_Per_Second_Type := Float_To_MB_Speed (MB_Speed_To_Float (Original_Speed));
+      Round_Trip_Proc : constant Processing_Speed_Type :=
+         Float_To_Processing_Speed (Processing_Speed_To_Float (Processing_Speed));
+   begin
+--  Test MB_Per_Second_Type conversions
+      if abs (MB_Speed_Float - 125.5) >= 0.001 then
+         Output.Write_Line ("FAIL: MB/s to Float - Expected 125.5, got" &
+                           Float'Image (MB_Speed_Float));
+         return False;
+      end if;
+
+      if abs (Float (Float_MB_Speed) - 42.3) >= 0.001 then
+         Output.Write_Line ("FAIL: Float to MB/s - Expected 42.3, got" &
+                           Float'Image (Float (Float_MB_Speed)));
+         return False;
+      end if;
+
+--  Test Processing_Speed_Type conversions
+      if abs (Proc_Speed_Float - 89.7) >= 0.001 then
+         Output.Write_Line ("FAIL: Processing speed to Float - Expected 89.7, got" &
+                           Float'Image (Proc_Speed_Float));
+         return False;
+      end if;
+
+      if abs (Float (Float_Proc_Speed) - 42.3) >= 0.001 then
+         Output.Write_Line ("FAIL: Float to Processing speed - Expected 42.3, got" &
+                           Float'Image (Float (Float_Proc_Speed)));
+         return False;
+      end if;
+
+--  Test round-trip conversions
+      if abs (Float (Round_Trip_MB) - 125.5) >= 0.001 then
+         Output.Write_Line ("FAIL: MB/s round-trip - Expected 125.5, got" &
+                           Float'Image (Float (Round_Trip_MB)));
+         return False;
+      end if;
+
+      if abs (Float (Round_Trip_Proc) - 89.7) >= 0.001 then
+         Output.Write_Line ("FAIL: Processing speed round-trip - Expected 89.7, got" &
+                           Float'Image (Float (Round_Trip_Proc)));
+         return False;
+      end if;
+
+      return True;
+   end Test_Speed_Float_Conversions;
+
+--   ==========================================================================
+--   Run All Tests
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Natural
+   is
+      Failed_Count : Natural := 0;
+   begin
+--   SI_Bytes_Type ↔ Long_Long_Integer tests
+      if not Test_SI_Bytes_To_Long_Long_Integer (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Long_Long_Integer_To_SI_Bytes (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Long_Long_Integer_Boundary (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   Natural ↔ SI_Bytes_Type tests
+      if not Test_Natural_To_SI_Bytes (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_SI_Bytes_To_Natural (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Natural_Boundary_Values (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   Duration ↔ Milliseconds_Type tests
+      if not Test_Duration_To_Milliseconds (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Milliseconds_To_Duration (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Duration_Precision (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   Calculate_MB_Per_Second tests
+      if not Test_Calculate_MB_Per_Second (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Calculate_MB_Per_Second_Complex (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   Calculate_Percentage tests
+      if not Test_Calculate_Percentage_Basic (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Calculate_Percentage_Complex (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Calculate_Percentage_Boundaries (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   Compression ratio test
+      if not Test_Compression_Ratio (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   New byte conversion tests
+      if not Test_SI_IEC_Conversions (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_From_KB_MB_GB (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_From_KB_MB_GB_Overflow_Protection (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   New time conversion tests
+      if not Test_Milliseconds_Seconds_Conversions (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Timeout_Delay_To_Duration (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+--   New performance type conversion tests
+      if not Test_Compression_Ratio_Float_Conversions (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      if not Test_Speed_Float_Conversions (Output) then
+         Failed_Count := Failed_Count + 1;
+      end if;
+
+      return Failed_Count;
+   end Run_All_Tests;
+
+end Test_Type_Conversions;

@@ -1,0 +1,372 @@
+--   =============================================================================
+--   Test_Performance_Arithmetic - Performance Types Arithmetic Operations Unit Tests
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Abohlib.Core.Domain.Types.Performance;
+
+package body Test_Performance_Arithmetic is
+
+   use Abohlib.Core.Domain.Types.Performance;
+
+--   ==========================================================================
+--   Test Cases for Bytes_Per_Second_Type
+--   ==========================================================================
+
+   function Test_Bytes_Per_Second_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate1  : constant Bytes_Per_Second_Type := 1000.0;
+      Rate2  : constant Bytes_Per_Second_Type := 1500.0;
+      Result : constant Bytes_Per_Second_Type := Rate1 + Rate2;
+   begin
+      if Result /= 2500.0 then
+         Output.Write_Line ("FAIL: Bytes_Per_Second addition - Expected 2500.0, got" &
+                           Bytes_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Bytes_Per_Second_Addition;
+
+   function Test_Bytes_Per_Second_Multiplication
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate   : constant Bytes_Per_Second_Type := 1000.0;
+      Factor : constant Float := 2.5;
+      Result : constant Bytes_Per_Second_Type := Rate * Factor;
+   begin
+      if Result /= 2500.0 then
+         Output.Write_Line ("FAIL: Bytes_Per_Second multiplication - Expected 2500.0, got" &
+                           Bytes_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Bytes_Per_Second_Multiplication;
+
+   function Test_Bytes_Per_Second_Division
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate    : constant Bytes_Per_Second_Type := 1000.0;
+      Divisor : constant Float := 4.0;
+      Result  : constant Bytes_Per_Second_Type := Rate / Divisor;
+   begin
+      if Result /= 250.0 then
+         Output.Write_Line ("FAIL: Bytes_Per_Second division - Expected 250.0, got" &
+                           Bytes_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Bytes_Per_Second_Division;
+
+   function Test_Bytes_Per_Second_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Slow : constant Bytes_Per_Second_Type := 100.0;
+      Fast : constant Bytes_Per_Second_Type := 1000.0;
+   begin
+      if not (Slow < Fast) then
+         Output.Write_Line ("FAIL: Bytes_Per_Second comparison - Slow should be < Fast");
+         return False;
+      end if;
+
+      if not (Fast > Slow) then
+         Output.Write_Line ("FAIL: Bytes_Per_Second comparison - Fast should be > Slow");
+         return False;
+      end if;
+      return True;
+   end Test_Bytes_Per_Second_Comparison;
+
+--   ==========================================================================
+--   Test Cases for MB_Per_Second_Type
+--   ==========================================================================
+
+   function Test_MB_Per_Second_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate1  : constant MB_Per_Second_Type := 10.5;
+      Rate2  : constant MB_Per_Second_Type := 5.5;
+      Result : constant MB_Per_Second_Type := Rate1 + Rate2;
+   begin
+      if Result /= 16.0 then
+         Output.Write_Line ("FAIL: MB_Per_Second addition - Expected 16.0, got" &
+                           MB_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_MB_Per_Second_Addition;
+
+   function Test_MB_Per_Second_Multiplication
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate   : constant MB_Per_Second_Type := 5.0;
+      Factor : constant Float := 3.0;
+      Result : constant MB_Per_Second_Type := Rate * Factor;
+   begin
+      if Result /= 15.0 then
+         Output.Write_Line ("FAIL: MB_Per_Second multiplication - Expected 15.0, got" &
+                           MB_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_MB_Per_Second_Multiplication;
+
+   function Test_MB_Per_Second_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Lower  : constant MB_Per_Second_Type := 5.0;
+      Higher : constant MB_Per_Second_Type := 10.0;
+   begin
+      if not (Lower < Higher) then
+         Output.Write_Line ("FAIL: MB_Per_Second comparison - Lower should be < Higher");
+         return False;
+      end if;
+
+      if not (Higher > Lower) then
+         Output.Write_Line ("FAIL: MB_Per_Second comparison - Higher should be > Lower");
+         return False;
+      end if;
+      return True;
+   end Test_MB_Per_Second_Comparison;
+
+--   ==========================================================================
+--   Test Cases for GB_Per_Second_Type
+--   ==========================================================================
+
+   function Test_GB_Per_Second_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate1  : constant GB_Per_Second_Type := 1.5;
+      Rate2  : constant GB_Per_Second_Type := 2.5;
+      Result : constant GB_Per_Second_Type := Rate1 + Rate2;
+   begin
+      if Result /= 4.0 then
+         Output.Write_Line ("FAIL: GB_Per_Second addition - Expected 4.0, got" &
+                           GB_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_GB_Per_Second_Addition;
+
+   function Test_GB_Per_Second_Subtraction
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate1  : constant GB_Per_Second_Type := 5.0;
+      Rate2  : constant GB_Per_Second_Type := 2.0;
+      Result : constant GB_Per_Second_Type := Rate1 - Rate2;
+   begin
+      if Result /= 3.0 then
+         Output.Write_Line ("FAIL: GB_Per_Second subtraction - Expected 3.0, got" &
+                           GB_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_GB_Per_Second_Subtraction;
+
+   function Test_GB_Per_Second_Multiplication
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Rate   : constant GB_Per_Second_Type := 2.0;
+      Factor : constant Float := 2.5;
+      Result : constant GB_Per_Second_Type := Rate * Factor;
+   begin
+      if Result /= 5.0 then
+         Output.Write_Line ("FAIL: GB_Per_Second multiplication - Expected 5.0, got" &
+                           GB_Per_Second_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_GB_Per_Second_Multiplication;
+
+--   ==========================================================================
+--   Test Cases for Throughput_Type
+--   ==========================================================================
+
+   function Test_Throughput_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Throughput1 : constant Throughput_Type := 1000.0;
+      Throughput2 : constant Throughput_Type := 500.0;
+      Result      : constant Throughput_Type := Throughput1 + Throughput2;
+   begin
+      if Result /= 1500.0 then
+         Output.Write_Line ("FAIL: Throughput addition - Expected 1500.0, got" &
+                           Throughput_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Throughput_Addition;
+
+   function Test_Throughput_Average
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Total_Throughput : constant Throughput_Type := 1000.0;
+      Samples          : constant Float := 4.0;
+      Average          : constant Throughput_Type := Total_Throughput / Samples;
+   begin
+      if Average /= 250.0 then
+         Output.Write_Line ("FAIL: Throughput average - Expected 250.0, got" &
+                           Throughput_Type'Image (Average));
+         return False;
+      end if;
+      return True;
+   end Test_Throughput_Average;
+
+   function Test_Throughput_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Low_Throughput  : constant Throughput_Type := 100.0;
+      High_Throughput : constant Throughput_Type := 1000.0;
+   begin
+      if not (Low_Throughput < High_Throughput) then
+         Output.Write_Line ("FAIL: Throughput comparison - Low should be < High");
+         return False;
+      end if;
+
+      if not (High_Throughput > Low_Throughput) then
+         Output.Write_Line ("FAIL: Throughput comparison - High should be > Low");
+         return False;
+      end if;
+      return True;
+   end Test_Throughput_Comparison;
+
+--   ==========================================================================
+--   Test Cases for Percentage_Type
+--   ==========================================================================
+
+   function Test_Percentage_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Percent1 : constant Percentage_Type := 25.50;
+      Percent2 : constant Percentage_Type := 30.25;
+      Result   : constant Percentage_Type := Percent1 + Percent2;
+   begin
+      if Result /= 55.75 then
+         Output.Write_Line ("FAIL: Percentage addition - Expected 55.75, got" &
+                           Percentage_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Percentage_Addition;
+
+   function Test_Percentage_Subtraction
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Total    : constant Percentage_Type := 100.00;
+      Used     : constant Percentage_Type := 35.75;
+      Remaining : constant Percentage_Type := Total - Used;
+   begin
+      if Remaining /= 64.25 then
+         Output.Write_Line ("FAIL: Percentage subtraction - Expected 64.25, got" &
+                           Percentage_Type'Image (Remaining));
+         return False;
+      end if;
+      return True;
+   end Test_Percentage_Subtraction;
+
+   function Test_Percentage_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Low_Percent  : constant Percentage_Type := 25.0;
+      High_Percent : constant Percentage_Type := 75.0;
+   begin
+      if not (Low_Percent < High_Percent) then
+         Output.Write_Line ("FAIL: Percentage comparison - Low should be < High");
+         return False;
+      end if;
+
+      if not (High_Percent > Low_Percent) then
+         Output.Write_Line ("FAIL: Percentage comparison - High should be > Low");
+         return False;
+      end if;
+      return True;
+   end Test_Percentage_Comparison;
+
+--   ==========================================================================
+--   Test Cases for Conversion Functions
+--   ==========================================================================
+
+   function Test_Throughput_Conversions
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Bytes_Rate : constant Bytes_Per_Second_Type := 1_000_000.0;  -- 1 MB/s in bytes
+      MB_Rate    : constant MB_Per_Second_Type := To_MB_Per_Second (Bytes_Rate);
+      GB_Rate    : constant GB_Per_Second_Type := To_GB_Per_Second (MB_Rate);
+   begin
+      if MB_Rate /= 1.0 then
+         Output.Write_Line ("FAIL: Bytes to MB conversion - Expected 1.0, got" &
+                           MB_Per_Second_Type'Image (MB_Rate));
+         return False;
+      end if;
+
+      if GB_Rate /= 0.001 then
+         Output.Write_Line ("FAIL: MB to GB conversion - Expected 0.001, got" &
+                           GB_Per_Second_Type'Image (GB_Rate));
+         return False;
+      end if;
+      return True;
+   end Test_Throughput_Conversions;
+
+--   ==========================================================================
+--   Test Cases for Performance Calculations
+--   ==========================================================================
+
+   function Test_Performance_Scaling
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Base_Throughput : constant Throughput_Type := 100.0;
+      Scale_Factor    : constant Float := 1.5;
+      Scaled_Result   : constant Throughput_Type := Base_Throughput * Scale_Factor;
+
+      Peak_Throughput : constant Throughput_Type := 1000.0;
+      Efficiency_Factor : constant Float := 0.8;
+      Actual_Throughput : constant Throughput_Type := Peak_Throughput * Efficiency_Factor;
+   begin
+      if Scaled_Result /= 150.0 then
+         Output.Write_Line ("FAIL: Performance scaling - Expected 150.0, got" &
+                           Throughput_Type'Image (Scaled_Result));
+         return False;
+      end if;
+
+      if Actual_Throughput /= 800.0 then
+         Output.Write_Line ("FAIL: Efficiency calculation - Expected 800.0, got" &
+                           Throughput_Type'Image (Actual_Throughput));
+         return False;
+      end if;
+      return True;
+   end Test_Performance_Scaling;
+
+--   ==========================================================================
+--   Test Runner
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result is
+      Stats : Test_Stats := (0, 0, 0);
+   begin
+      Output.Write_Line ("=== Performance Arithmetic Operations Tests ===");
+
+--   Bytes_Per_Second_Type tests
+      Run_Test ("Bytes_Per_Second Addition", Test_Bytes_Per_Second_Addition'Access, Output, Stats);
+      Run_Test ("Bytes_Per_Second Multiplication", Test_Bytes_Per_Second_Multiplication'Access, Output, Stats);
+      Run_Test ("Bytes_Per_Second Division", Test_Bytes_Per_Second_Division'Access, Output, Stats);
+      Run_Test ("Bytes_Per_Second Comparison", Test_Bytes_Per_Second_Comparison'Access, Output, Stats);
+
+--   MB_Per_Second_Type tests
+      Run_Test ("MB_Per_Second Addition", Test_MB_Per_Second_Addition'Access, Output, Stats);
+      Run_Test ("MB_Per_Second Multiplication", Test_MB_Per_Second_Multiplication'Access, Output, Stats);
+      Run_Test ("MB_Per_Second Comparison", Test_MB_Per_Second_Comparison'Access, Output, Stats);
+
+--   GB_Per_Second_Type tests
+      Run_Test ("GB_Per_Second Addition", Test_GB_Per_Second_Addition'Access, Output, Stats);
+      Run_Test ("GB_Per_Second Subtraction", Test_GB_Per_Second_Subtraction'Access, Output, Stats);
+      Run_Test ("GB_Per_Second Multiplication", Test_GB_Per_Second_Multiplication'Access, Output, Stats);
+
+--   Throughput_Type tests
+      Run_Test ("Throughput Addition", Test_Throughput_Addition'Access, Output, Stats);
+      Run_Test ("Throughput Average", Test_Throughput_Average'Access, Output, Stats);
+      Run_Test ("Throughput Comparison", Test_Throughput_Comparison'Access, Output, Stats);
+
+--   Percentage_Type tests
+      Run_Test ("Percentage Addition", Test_Percentage_Addition'Access, Output, Stats);
+      Run_Test ("Percentage Subtraction", Test_Percentage_Subtraction'Access, Output, Stats);
+      Run_Test ("Percentage Comparison", Test_Percentage_Comparison'Access, Output, Stats);
+
+--   Conversion and calculation tests
+      Run_Test ("Throughput Conversions", Test_Throughput_Conversions'Access, Output, Stats);
+      Run_Test ("Performance Scaling", Test_Performance_Scaling'Access, Output, Stats);
+
+      Print_Test_Summary ("Performance Arithmetic Tests", Stats, Output);
+
+      return Test_Stats_Result.Ok (Stats);
+   end Run_All_Tests;
+
+end Test_Performance_Arithmetic;
+
+pragma Warnings (On, "subprogram body has no previous spec");

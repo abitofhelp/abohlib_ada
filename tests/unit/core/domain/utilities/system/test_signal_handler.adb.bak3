@@ -1,0 +1,302 @@
+--   =============================================================================
+--   Test_Signal_Handler - Unit tests for Signal Handler
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Domain.Utilities.System.Signal_Handler;
+use Abohlib.Core.Domain.Utilities.System.Signal_Handler;
+with Abohlib.Core.Domain.Utilities.Concurrent.Cancellation_Source;
+use Abohlib.Core.Domain.Utilities.Concurrent.Cancellation_Source;
+--   with Abohlib.Core.Domain.Ports.Concurrent.Cancellation;
+--   use Abohlib.Core.Domain.Ports.Concurrent.Cancellation;
+
+package body Test_Signal_Handler is
+
+--   ==========================================================================
+--   Test Functions
+--   ==========================================================================
+
+   function Test_Signal_Type_Conversion return Void_Result.Result is
+   begin
+      if To_String (SIGINT) /= "SIGINT" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("SIGINT should convert to 'SIGINT'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (SIGINT) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      if To_String (SIGTERM) /= "SIGTERM" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("SIGTERM should convert to 'SIGTERM'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (SIGTERM) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      if To_String (SIGHUP) /= "SIGHUP" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("SIGHUP should convert to 'SIGHUP'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (SIGHUP) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      if To_String (SIGQUIT) /= "SIGQUIT" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("SIGQUIT should convert to 'SIGQUIT'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (SIGQUIT) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      if To_String (SIGUSR1) /= "SIGUSR1" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("SIGUSR1 should convert to 'SIGUSR1'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (SIGUSR1) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      if To_String (SIGUSR2) /= "SIGUSR2" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("SIGUSR2 should convert to 'SIGUSR2'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (SIGUSR2) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      if To_String (Unknown) /= "UNKNOWN" then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Unknown should convert to 'UNKNOWN'"),
+            Details     => To_Unbounded_String ("Got: '" & To_String (Unknown) & "'"),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Signal_Type_Conversion")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Signal_Type_Conversion;
+
+   function Test_Platform_Detection return Void_Result.Result is
+      Platform : constant Platform_Type := Current_Platform;
+   begin
+--   We should detect some platform
+      case Platform is
+         when Linux | MacOS | Windows | FreeBSD =>
+--   Valid platform detected
+            null;
+         when Unknown =>
+--   Unknown is acceptable for unsupported platforms
+            null;
+      end case;
+
+--   Just verify it returns a valid value
+      if Platform not in Platform_Type then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Platform detection should return valid platform"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Platform_Detection")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Platform_Detection;
+
+   function Test_Generic_Handler return Void_Result.Result is
+      Handler      : Signal_Handler_Interface'Class := Create_Platform_Handler;
+      Cancellation : aliased Cancellation_Source_Type := Create;
+   begin
+--   Test initial state
+      if Is_Installed (Handler) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Handler should not be installed initially"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+      if Last_Signal (Handler) /= Unknown then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Last signal should be Unknown initially"),
+            Details     => To_Unbounded_String ("Got: " & To_String (Last_Signal (Handler))),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+      if Signal_Count (Handler) /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Signal count should be 0 initially"),
+            Details     => To_Unbounded_String ("Got: " & Signal_Count (Handler)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+--   Install handler
+      Install_Handlers (Handler, Cancellation'Unchecked_Access, SIGINT);
+
+      if not Is_Installed (Handler) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Handler should be installed after Install_Handlers"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+--   Remove handler
+      Remove_Handlers (Handler);
+
+      if Is_Installed (Handler) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Handler should not be installed after Remove_Handlers"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+      if Last_Signal (Handler) /= Unknown then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Last signal should be Unknown after removal"),
+            Details     => To_Unbounded_String ("Got: " & To_String (Last_Signal (Handler))),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+      if Signal_Count (Handler) /= 0 then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Signal count should be 0 after removal"),
+            Details     => To_Unbounded_String ("Got: " & Signal_Count (Handler)'Image),
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Generic_Handler")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Generic_Handler;
+
+   function Test_Multiple_Signals return Void_Result.Result is
+      Handler      : Signal_Handler_Interface'Class := Create_Platform_Handler;
+      Cancellation : aliased Cancellation_Source_Type := Create;
+      Signals      : constant Signal_Array_Type (1 .. 3) := [SIGINT, SIGTERM, SIGHUP];
+   begin
+--   Install multiple handlers
+      Install_Multiple_Handlers (Handler, Cancellation'Unchecked_Access, Signals);
+
+      if not Is_Installed (Handler) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Handler should be installed for multiple signals"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Multiple_Signals")
+         ));
+      end if;
+
+--   Remove handlers
+      Remove_Handlers (Handler);
+
+      if Is_Installed (Handler) then
+         return Void_Result.Err (Test_Error'(
+            Kind        => Assertion_Failed,
+            Message     => To_Unbounded_String ("Handler should be removed"),
+            Details     => Null_Unbounded_String,
+            Line_Number => 0,
+            Test_Name   => To_Unbounded_String ("Test_Multiple_Signals")
+         ));
+      end if;
+
+      return Void_Result.Ok (True);
+   end Test_Multiple_Signals;
+
+--   ==========================================================================
+--   Test Runner
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Test_Count : constant := 4;
+      Tests : Test_Results_Array (1 .. Test_Count);
+
+      procedure Run_Single_Test
+        (Index : Positive;
+         Name : String;
+         Func : Test_Function_Access) is
+         Result : constant Test_Result_Pkg.Result := Run_Test (Name, Func, Output);
+      begin
+         if Result.Is_Ok then
+            Tests (Index) := Result.Get_Ok;
+            Print_Test_Result (Tests (Index), Output);
+         else
+--  For simplicity, we'll create a failed test result
+            Tests (Index) := Test_Result'(
+               Name => To_Unbounded_String (Name),
+               Status => Error,
+               Message => To_Unbounded_String ("Test execution failed"),
+               Elapsed_Time => 0.0,
+               Line_Number => 0,
+               Correlation_ID => Null_Unbounded_String
+            );
+            Print_Test_Result (Tests (Index), Output);
+         end if;
+      end Run_Single_Test;
+   begin
+      Output.Write_Line ("=== Running Signal Handler Tests ===");
+
+      Run_Single_Test (1, "Signal Type Conversion", Test_Signal_Type_Conversion'Access);
+      Run_Single_Test (2, "Platform Detection", Test_Platform_Detection'Access);
+      Run_Single_Test (3, "Generic Handler", Test_Generic_Handler'Access);
+      Run_Single_Test (4, "Multiple Signals", Test_Multiple_Signals'Access);
+
+      declare
+         Stats_Result : constant Test_Stats_Result.Result :=
+            Run_Test_Suite ("Signal Handler", Tests, Output);
+      begin
+         if Stats_Result.Is_Ok then
+            declare
+               Stats : constant Test_Statistics := Stats_Result.Get_Ok;
+            begin
+               Output.Write_Line ("");
+               Print_Test_Summary ("Signal Handler Tests", Stats, Output);
+               return Test_Stats_Result.Ok (Stats);
+            end;
+         else
+            return Stats_Result;
+         end if;
+      end;
+   end Run_All_Tests;
+
+end Test_Signal_Handler;

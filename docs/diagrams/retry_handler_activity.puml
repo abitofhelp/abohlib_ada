@@ -1,0 +1,94 @@
+@startuml Retry_Handler_Activity
+!theme aws-orange
+title Retry Handler Execution Flow\nWith Circuit Breaker and Backoff Strategies
+
+start
+
+:Initialize Retry Handler;
+:Set attempt counter = 0;
+
+while (Attempt < Max_Attempts?) is (yes)
+  :Increment attempt counter;
+  
+  if (Circuit Breaker Enabled?) then (yes)
+    if (Circuit Open?) then (yes)
+      :Fail Fast;
+      :Return Circuit_Open_Error;
+      stop
+    endif
+  endif
+  
+  :Fire Attempt_Started Event;
+  
+  partition "Execute Operation" {
+    :Call Execute_Operation();
+    
+    if (Operation Successful?) then (yes)
+      :Update Success Stats;
+      :Fire Success Event;
+      :Return Ok(Result);
+      stop
+    else (no)
+      :Capture Error;
+      :Update Failure Stats;
+    endif
+  }
+  
+  if (Should_Retry(Error)?) then (yes)
+    if (Last Attempt?) then (no)
+      
+      partition "Calculate Delay" {
+        switch (Backoff Strategy)
+        case (Fixed)
+          :delay = initial_delay;
+        case (Linear)
+          :delay = initial_delay * attempt;
+        case (Exponential)
+          :delay = initial_delay * multiplier^(attempt-1);
+        case (Fibonacci)
+          :delay = initial_delay * fib(attempt);
+        endswitch
+        
+        :Cap delay at max_delay;
+      }
+      
+      partition "Apply Jitter" {
+        switch (Jitter Mode)
+        case (None)
+          :final_delay = delay;
+        case (Full)
+          :final_delay = random(0, delay);
+        case (Equal)
+          :final_delay = delay/2 + random(0, delay/2);
+        case (Decorrelated)
+          :final_delay = min(max_delay, random(initial, prev*3));
+        endswitch
+      }
+      
+      :Wait(final_delay);
+      :Fire Retry_Scheduled Event;
+      
+    endif
+  else (no)
+    :Non-retryable error;
+    :Return Err(Error);
+    stop
+  endif
+  
+endwhile (no)
+
+:Fire Retry_Exhausted Event;
+:Return Err(Max_Attempts_Exceeded);
+
+stop
+
+note right
+  **Key Features:**
+  - Circuit breaker integration
+  - Multiple backoff strategies
+  - Jitter for thundering herd prevention
+  - Comprehensive event tracking
+  - Configurable retry predicates
+end note
+
+@enduml

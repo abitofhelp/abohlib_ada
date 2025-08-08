@@ -1,0 +1,131 @@
+@startuml Architecture_Overview
+!theme aws-orange
+title Abohlib Hybrid Architecture Overview\nDDD + Clean Architecture + Hexagonal Architecture
+
+!define DOMAIN_COLOR #E8F4F8
+!define APP_COLOR #FFF2E8
+!define INFRA_COLOR #F0F8E8
+!define PRESENT_COLOR #F8E8F8
+
+package "External Systems" as external {
+  [File System]
+  [Databases]
+  [Web APIs]
+  [Message Queues]
+  [Third Party Services]
+}
+
+package "Presentation Layer" as presentation <<PRESENT_COLOR>> {
+  package "Adapters" {
+    [CLI Adapter]
+    [REST API Adapter]
+    [GraphQL Adapter]
+  }
+  [Presentation Errors]
+  [Presentation Constants]
+}
+
+package "Infrastructure Layer" as infrastructure <<INFRA_COLOR>> {
+  package "Adapters" as infra_adapters {
+    [POSIX File System]
+    [POSIX System Info]
+    [Database Adapter]
+    [HTTP Client]
+  }
+  [Resilience]
+  [Logging]
+  [Testing Framework]
+  [Infrastructure Errors]
+  note right of [Testing Framework]
+    Custom Result-based
+    testing framework
+  end note
+}
+
+package "Application Layer" as application <<APP_COLOR>> {
+  [Use Cases]
+  [Application Services]
+  [DTOs]
+  [Application Errors]
+  [Application Constants]
+}
+
+package "Domain Layer (Core)" as domain <<DOMAIN_COLOR>> {
+  package "Entities" {
+    [Domain Entities]
+  }
+  package "Value Objects" {
+    [Type Safe Generic ID]
+    [Constrained Strings]
+    [File Path]
+  }
+  package "Aggregates" {
+    [Aggregate Root]
+  }
+  package "Domain Services" {
+    [Generic Pipeline Stage]
+    [SHA256 Hasher]
+    [File Path Service]
+  }
+  package "Events" {
+    [Domain Events]
+    [Event Dispatcher]
+  }
+  package "Repositories (Ports)" {
+    [Generic Repository]
+    [ACID Repository]
+    [Unit of Work]
+  }
+  package "Sagas" {
+    [Saga Coordinator]
+  }
+  package "Ports" {
+    [File System Port]
+    [System Info Port]
+  }
+  package "Result Pattern" {
+    [Result<T,E>]
+    [Result.Functional]
+  }
+  [Domain Errors]
+}
+
+' Dependencies (arrows point toward dependencies)
+presentation --> application : "Uses"
+application --> domain : "Uses"
+infrastructure --> domain : "Implements Ports"
+infra_adapters --> external : "Connects to"
+
+' Hexagonal connections (ports and adapters)
+[File System Port] <|.. [POSIX File System] : "implements"
+[System Info Port] <|.. [POSIX System Info] : "implements"
+
+note right of domain
+  **DEPENDENCY RULE**
+  Dependencies only point inward.
+  Domain has NO dependencies
+  on outer layers.
+end note
+
+note left of infrastructure
+  **ADAPTERS**
+  Implement domain ports.
+  Handle external system
+  integration.
+end note
+
+note top of application
+  **USE CASES**
+  Orchestrate domain objects.
+  Depend only on domain
+  abstractions.
+end note
+
+note bottom of presentation
+  **DELIVERY MECHANISMS**
+  Handle user interface
+  concerns. Convert between
+  external formats and DTOs.
+end note
+
+@enduml

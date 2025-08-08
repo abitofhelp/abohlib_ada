@@ -1,0 +1,103 @@
+@startuml State_Machine_Sequence
+!theme aws-orange
+title State Machine Transition Flow\nWith Validation and History Tracking
+
+actor Client
+participant "State_Machine" as SM
+participant "Validator" as V
+participant "History" as H
+participant "Statistics" as S
+
+== Initialization ==
+Client -> SM: Create(Initial_State)
+activate SM
+SM -> SM: Set Current_State = Initial
+SM -> H: Record(Initial)
+SM -> S: Initialize_Stats()
+SM --> Client: State_Machine instance
+deactivate SM
+
+== Valid Transition ==
+Client -> SM: Transition_To(New_State, Context)
+activate SM
+SM -> SM: Check current state
+
+SM -> V: Validate(Current, New, Context)
+activate V
+V -> V: Check transition rules
+V --> SM: True (valid)
+deactivate V
+
+SM -> SM: Update Current_State = New
+SM -> H: Record(New_State)
+activate H
+H -> H: Add to history buffer
+H -> H: Maintain max size
+H --> SM: Recorded
+deactivate H
+
+SM -> S: Update_Stats(success)
+activate S
+S -> S: Total_Transitions++
+S -> S: Successful_Transitions++
+S --> SM: Updated
+deactivate S
+
+SM --> Client: Ok(True)
+deactivate SM
+
+== Invalid Transition ==
+Client -> SM: Transition_To(Invalid_State, Context)
+activate SM
+SM -> SM: Check current state
+
+SM -> V: Validate(Current, Invalid, Context)
+activate V
+V -> V: Check transition rules
+V --> SM: False (invalid)
+deactivate V
+
+SM -> S: Update_Stats(failed)
+activate S
+S -> S: Total_Transitions++
+S -> S: Failed_Transitions++
+S --> SM: Updated
+deactivate S
+
+SM --> Client: Err(Invalid_Transition)
+deactivate SM
+
+== Query Operations ==
+Client -> SM: Get_History(Count)
+activate SM
+SM -> H: Retrieve_Last(Count)
+activate H
+H --> SM: State_Array
+deactivate H
+SM --> Client: History states
+deactivate SM
+
+Client -> SM: Get_Statistics()
+activate SM
+SM -> S: Get_Current()
+activate S
+S --> SM: Statistics record
+deactivate S
+SM --> Client: Stats
+deactivate SM
+
+note over SM
+  **Thread Safety:**
+  - Protected type for concurrent access
+  - Atomic state transitions
+  - Safe history management
+end note
+
+note over V
+  **Validation Rules:**
+  - User-defined logic
+  - Context-aware decisions
+  - Pure function (no side effects)
+end note
+
+@enduml

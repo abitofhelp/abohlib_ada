@@ -1,0 +1,118 @@
+@startuml Pipeline_Stage_Class
+!theme aws-orange
+title Generic Pipeline Stage Design\nAdaptive Parallel Processing
+
+!define INTERFACE_COLOR #E8F4F8
+!define CLASS_COLOR #FFF2E8
+!define ABSTRACT_COLOR #F0F8E8
+
+interface "Pipeline_Stage_Interface" <<INTERFACE_COLOR>> {
+  + Process(Input) : Result<Output, Error>
+  + Name() : String
+  + Is_Ready() : Boolean
+  + Reset()
+}
+
+abstract class "Generic_Stage<Input, Output, Config, State>" <<ABSTRACT_COLOR>> {
+  - Name : String
+  - Config : Config_Type
+  - State : State_Type
+  - Is_Initialized : Boolean
+  - Items_Processed : Natural
+  - Errors_Count : Natural
+  - Total_Time : Duration
+  - Min_Time : Duration
+  - Max_Time : Duration
+  --
+  + Create(Config) : Pipeline_Stage
+  + Process(Input) : Stage_Result
+  + Process_Batch(Inputs) : Batch_Result
+  + Get_Statistics() : Stage_Statistics
+  + Update_State(New_State)
+  --
+  {abstract} Process_Item(Input, State) : Output
+  {abstract} Initialize_State(Config) : State
+  {abstract} Is_Valid_State(State) : Boolean
+  {abstract} Can_Process_In_Parallel(State) : Boolean
+  --
+  # Process_Sequential(Items) : Results
+  # Process_Parallel(Items) : Results
+  # Determine_Processing_Mode() : Mode
+}
+
+class "Stage_Statistics" <<CLASS_COLOR>> {
+  + Items_Processed : Natural
+  + Items_Failed : Natural
+  + Total_Time : Duration
+  + Average_Time : Duration
+  + Min_Time : Duration
+  + Max_Time : Duration
+  + Throughput : Float
+}
+
+class "Batch_Result" <<CLASS_COLOR>> {
+  + Results : Result_Array
+  + Success_Count : Natural
+  + Error_Count : Natural
+  + Total_Time : Duration
+}
+
+enum "Processing_Mode" {
+  Sequential
+  Parallel
+  Adaptive
+}
+
+enum "Stage_Error_Kind" {
+  Validation_Failed
+  Processing_Failed
+  State_Error
+  Configuration_Error
+}
+
+class "Stage_Error" <<CLASS_COLOR>> {
+  + Kind : Stage_Error_Kind
+  + Message : String
+  + Stage_Name : String
+  + Item_Index : Natural
+}
+
+class "Example_Transform_Stage" <<CLASS_COLOR>> {
+  Input_Type => String
+  Output_Type => Integer
+  Config_Type => Transform_Config
+  State_Type => Transform_State
+  --
+  + Process_Item(Input, State) : Output
+  + Initialize_State(Config) : State
+  + Is_Valid_State(State) : Boolean
+  + Can_Process_In_Parallel(State) : Boolean
+}
+
+"Generic_Stage<Input, Output, Config, State>" ..|> "Pipeline_Stage_Interface" : implements
+"Generic_Stage<Input, Output, Config, State>" --> Stage_Statistics : produces
+"Generic_Stage<Input, Output, Config, State>" --> Batch_Result : returns
+"Generic_Stage<Input, Output, Config, State>" --> Processing_Mode : uses
+Batch_Result --> Stage_Error : contains
+"Example_Transform_Stage" --|> "Generic_Stage<Input, Output, Config, State>" : instantiates
+
+note right of "Generic_Stage<Input, Output, Config, State>"
+  **Adaptive Processing:**
+  1. Monitor processing time
+  2. Switch to parallel if beneficial
+  3. Fall back to sequential on errors
+  
+  **Key Features:**
+  - Automatic optimization
+  - Error resilience
+  - Performance tracking
+  - State management
+end note
+
+note left of "Example_Transform_Stage"
+  **Implementation Example:**
+  Converts strings to integers
+  with validation and caching
+end note
+
+@enduml

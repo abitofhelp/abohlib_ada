@@ -1,0 +1,129 @@
+@startuml Event_Sourcing_Sequence
+!theme plain
+
+actor "Client" as client
+participant "Application\nService" as app_service
+participant "Aggregate" as aggregate
+participant "Event\nStore" as event_store
+participant "Event\nDispatcher" as dispatcher
+participant "Event\nHandler" as handler
+
+== Command Processing ==
+
+client -> app_service : execute_command(command)
+activate app_service
+
+app_service -> event_store : load_events(aggregate_id)
+activate event_store
+event_store --> app_service : event_stream
+deactivate event_store
+
+app_service -> aggregate : reconstruct_from_events(event_stream)
+activate aggregate
+aggregate -> aggregate : apply_each_event()
+aggregate --> app_service : reconstructed_aggregate
+deactivate aggregate
+
+app_service -> aggregate : execute_command(command)
+activate aggregate
+
+aggregate -> aggregate : validate_business_rules()
+
+alt Command valid
+  aggregate -> aggregate : create_domain_event()
+  aggregate -> aggregate : apply_event_to_state()
+  aggregate -> aggregate : add_to_uncommitted_events()
+
+  note right : Add to uncommitted events
+
+  aggregate -> aggregate : increment_version()
+
+  aggregate --> app_service : success_result
+  deactivate aggregate
+
+else Command is invalid
+  aggregate --> app_service : error_result
+  deactivate aggregate
+  app_service --> client : error_response
+  deactivate app_service
+end
+
+== Event Persistence and Dispatch ==
+
+app_service -> aggregate : get_uncommitted_events()
+activate aggregate
+aggregate --> app_service : event_list
+deactivate aggregate
+
+app_service -> event_store : append_events(stream_id, event_list, expected_version)
+activate event_store
+
+event_store -> event_store : check_concurrency(expected_version)
+
+alt No concurrency conflict
+  event_store -> event_store : persist_events(event_list)
+  event_store --> app_service : success
+  deactivate event_store
+
+else Concurrency conflict detected
+  event_store --> app_service : concurrency_error
+  deactivate event_store
+  app_service --> client : conflict_error
+  deactivate app_service
+end
+
+app_service -> aggregate : mark_events_as_committed()
+activate aggregate
+aggregate -> aggregate : clear_uncommitted_events()
+aggregate --> app_service : committed
+deactivate aggregate
+
+== Event Dispatching and Side Effects ==
+
+app_service -> dispatcher : dispatch_all(event_list)
+activate dispatcher
+
+loop for each event in event_list
+  dispatcher -> dispatcher : find_handlers(event_type)
+
+  dispatcher -> handler : handle(event)
+  activate handler
+
+  handler -> handler : process_event_side_effects()
+  note right : Update read models,\nsend notifications, etc.
+
+  handler --> dispatcher : handled
+  deactivate handler
+end
+
+dispatcher --> app_service : all_events_dispatched
+deactivate dispatcher
+
+app_service --> client : command_result
+deactivate app_service
+
+== Query Processing (Event Replay) ==
+
+client -> app_service : query_aggregate_state(aggregate_id)
+activate app_service
+
+app_service -> event_store : load_all_events(aggregate_id)
+activate event_store
+event_store --> app_service : complete_event_stream
+deactivate event_store
+
+app_service -> aggregate : reconstruct_from_events(complete_event_stream)
+activate aggregate
+
+loop for each historical event
+  aggregate -> aggregate : apply_event(event)
+  note right : State is always derived from\nthe complete event history
+end
+
+aggregate --> app_service : current_state
+deactivate aggregate
+
+app_service --> client : aggregate_state
+deactivate app_service
+
+@enduml

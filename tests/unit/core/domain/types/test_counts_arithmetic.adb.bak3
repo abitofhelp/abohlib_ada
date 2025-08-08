@@ -1,0 +1,314 @@
+--   =============================================================================
+--   Test_Counts_Arithmetic - Counts Types Arithmetic Operations Unit Tests
+--   =============================================================================
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Abohlib.Core.Domain.Types.Counts;
+
+package body Test_Counts_Arithmetic is
+
+   use Abohlib.Core.Domain.Types.Counts;
+
+--   ==========================================================================
+--   Test Cases for Element_Count_Type
+--   ==========================================================================
+
+   function Test_Element_Count_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Count1 : constant Element_Count_Type := 10;
+      Count2 : constant Element_Count_Type := 20;
+      Result : constant Element_Count_Type := Count1 + Count2;
+   begin
+      if Result /= 30 then
+         Output.Write_Line ("FAIL: Element_Count addition - Expected 30, got" &
+                           Element_Count_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Element_Count_Addition;
+
+   function Test_Element_Count_Addition_With_Natural
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Count  : constant Element_Count_Type := 10;
+      Amount : constant Natural := 5;
+      Result : constant Element_Count_Type := Count + Amount;
+   begin
+      if Result /= 15 then
+         Output.Write_Line ("FAIL: Element_Count + Natural - Expected 15, got" &
+                           Element_Count_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Element_Count_Addition_With_Natural;
+
+   function Test_Element_Count_Multiplication
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Count  : constant Element_Count_Type := 10;
+      Factor : constant Natural := 3;
+      Result : constant Element_Count_Type := Count * Factor;
+      Result_Reverse : constant Element_Count_Type := Factor * Count;
+   begin
+      if Result /= 30 then
+         Output.Write_Line ("FAIL: Element_Count multiplication - Expected 30, got" &
+                           Element_Count_Type'Image (Result));
+         return False;
+      end if;
+
+      if Result_Reverse /= 30 then
+         Output.Write_Line ("FAIL: Element_Count reverse multiplication - Expected 30, got" &
+                           Element_Count_Type'Image (Result_Reverse));
+         return False;
+      end if;
+      return True;
+   end Test_Element_Count_Multiplication;
+
+   function Test_Element_Count_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Small : constant Element_Count_Type := 5;
+      Large : constant Element_Count_Type := 10;
+   begin
+      if not (Small < Large) then
+         Output.Write_Line ("FAIL: Element_Count comparison - Small should be < Large");
+         return False;
+      end if;
+
+      if not (Large > Small) then
+         Output.Write_Line ("FAIL: Element_Count comparison - Large should be > Small");
+         return False;
+      end if;
+
+      if not (Small <= Large) then
+         Output.Write_Line ("FAIL: Element_Count comparison - Small should be <= Large");
+         return False;
+      end if;
+
+      if not (Large >= Small) then
+         Output.Write_Line ("FAIL: Element_Count comparison - Large should be >= Small");
+         return False;
+      end if;
+      return True;
+   end Test_Element_Count_Comparison;
+
+--   ==========================================================================
+--   Test Cases for Worker_Count_Type
+--   ==========================================================================
+
+   function Test_Worker_Count_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Workers : constant Worker_Count_Type := 4;
+      Additional : constant Natural := 2;
+      Result : constant Worker_Count_Type := Workers + Additional;
+   begin
+      if Result /= 6 then
+         Output.Write_Line ("FAIL: Worker_Count addition - Expected 6, got" &
+                           Worker_Count_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Worker_Count_Addition;
+
+   function Test_Worker_Count_Subtraction
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Workers : constant Worker_Count_Type := 8;
+      Reduce : constant Natural := 3;
+      Result : constant Worker_Count_Type := Workers - Reduce;
+   begin
+      if Result /= 5 then
+         Output.Write_Line ("FAIL: Worker_Count subtraction - Expected 5, got" &
+                           Worker_Count_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Worker_Count_Subtraction;
+
+   function Test_Worker_Count_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Few : constant Worker_Count_Type := 2;
+      Many : constant Worker_Count_Type := 8;
+   begin
+      if not (Few < Many) then
+         Output.Write_Line ("FAIL: Worker_Count comparison - Few should be < Many");
+         return False;
+      end if;
+
+      if not (Many >= Few) then
+         Output.Write_Line ("FAIL: Worker_Count comparison - Many should be >= Few");
+         return False;
+      end if;
+      return True;
+   end Test_Worker_Count_Comparison;
+
+--   ==========================================================================
+--   Test Cases for Array_Index_Type
+--   ==========================================================================
+
+   function Test_Array_Index_Addition
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Index  : constant Array_Index_Type := 5;
+      Offset : constant Natural := 3;
+      Result : constant Array_Index_Type := Index + Offset;
+   begin
+      if Result /= 8 then
+         Output.Write_Line ("FAIL: Array_Index addition - Expected 8, got" &
+                           Array_Index_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Array_Index_Addition;
+
+   function Test_Array_Index_Subtraction
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Index  : constant Array_Index_Type := 10;
+      Offset : constant Natural := 4;
+      Result : constant Array_Index_Type := Index - Offset;
+   begin
+      if Result /= 6 then
+         Output.Write_Line ("FAIL: Array_Index subtraction - Expected 6, got" &
+                           Array_Index_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Array_Index_Subtraction;
+
+--   ==========================================================================
+--   Test Cases for Count Types (Retry, Failure, Success)
+--   ==========================================================================
+
+   function Test_Retry_Count_Increment
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Retries : constant Retry_Count_Type := 3;
+      Result_Natural : constant Retry_Count_Type := Retries + 1;
+      Result_Positive : constant Retry_Count_Type := Retries + 2;
+   begin
+      if Result_Natural /= 4 then
+         Output.Write_Line ("FAIL: Retry_Count + Natural - Expected 4, got" &
+                           Retry_Count_Type'Image (Result_Natural));
+         return False;
+      end if;
+
+      if Result_Positive /= 5 then
+         Output.Write_Line ("FAIL: Retry_Count + Positive - Expected 5, got" &
+                           Retry_Count_Type'Image (Result_Positive));
+         return False;
+      end if;
+      return True;
+   end Test_Retry_Count_Increment;
+
+   function Test_Failure_Count_Increment
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Failures : constant Failure_Count_Type := 0;
+      Result_Natural : constant Failure_Count_Type := Failures + 1;
+      Result_Positive : constant Failure_Count_Type := Failures + 3;
+   begin
+      if Result_Natural /= 1 then
+         Output.Write_Line ("FAIL: Failure_Count + Natural - Expected 1, got" &
+                           Failure_Count_Type'Image (Result_Natural));
+         return False;
+      end if;
+
+      if Result_Positive /= 3 then
+         Output.Write_Line ("FAIL: Failure_Count + Positive - Expected 3, got" &
+                           Failure_Count_Type'Image (Result_Positive));
+         return False;
+      end if;
+      return True;
+   end Test_Failure_Count_Increment;
+
+   function Test_Success_Count_Increment
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Successes : constant Success_Count_Type := 10;
+      Result : constant Success_Count_Type := Successes + 5;
+   begin
+      if Result /= 15 then
+         Output.Write_Line ("FAIL: Success_Count increment - Expected 15, got" &
+                           Success_Count_Type'Image (Result));
+         return False;
+      end if;
+      return True;
+   end Test_Success_Count_Increment;
+
+--   ==========================================================================
+--   Test Cases for Sequence_Number_Type
+--   ==========================================================================
+
+   function Test_Sequence_Number_Increment
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Seq : constant Sequence_Number_Type := 100;
+      Result_Natural : constant Sequence_Number_Type := Seq + 1;
+      Result_Positive : constant Sequence_Number_Type := Seq + 10;
+   begin
+      if Result_Natural /= 101 then
+         Output.Write_Line ("FAIL: Sequence_Number + Natural - Expected 101, got" &
+                           Sequence_Number_Type'Image (Result_Natural));
+         return False;
+      end if;
+
+      if Result_Positive /= 110 then
+         Output.Write_Line ("FAIL: Sequence_Number + Positive - Expected 110, got" &
+                           Sequence_Number_Type'Image (Result_Positive));
+         return False;
+      end if;
+      return True;
+   end Test_Sequence_Number_Increment;
+
+   function Test_Sequence_Number_Comparison
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Early : constant Sequence_Number_Type := 5;
+      Later : constant Sequence_Number_Type := 10;
+   begin
+      if not (Early < Later) then
+         Output.Write_Line ("FAIL: Sequence_Number comparison - Early should be < Later");
+         return False;
+      end if;
+
+      if not (Later >= Early) then
+         Output.Write_Line ("FAIL: Sequence_Number comparison - Later should be >= Early");
+         return False;
+      end if;
+      return True;
+   end Test_Sequence_Number_Comparison;
+
+--   ==========================================================================
+--   Test Runner
+--   ==========================================================================
+
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result is
+      Stats : Test_Stats := (0, 0, 0);
+   begin
+      Output.Write_Line ("=== Counts Arithmetic Operations Tests ===");
+
+--   Element_Count_Type tests
+      Run_Test ("Element_Count Addition", Test_Element_Count_Addition'Access, Output, Stats);
+      Run_Test ("Element_Count + Natural", Test_Element_Count_Addition_With_Natural'Access, Output, Stats);
+      Run_Test ("Element_Count Multiplication", Test_Element_Count_Multiplication'Access, Output, Stats);
+      Run_Test ("Element_Count Comparison", Test_Element_Count_Comparison'Access, Output, Stats);
+
+--   Worker_Count_Type tests
+      Run_Test ("Worker_Count Addition", Test_Worker_Count_Addition'Access, Output, Stats);
+      Run_Test ("Worker_Count Subtraction", Test_Worker_Count_Subtraction'Access, Output, Stats);
+      Run_Test ("Worker_Count Comparison", Test_Worker_Count_Comparison'Access, Output, Stats);
+
+--   Array_Index_Type tests
+      Run_Test ("Array_Index Addition", Test_Array_Index_Addition'Access, Output, Stats);
+      Run_Test ("Array_Index Subtraction", Test_Array_Index_Subtraction'Access, Output, Stats);
+
+--   Count types tests
+      Run_Test ("Retry_Count Increment", Test_Retry_Count_Increment'Access, Output, Stats);
+      Run_Test ("Failure_Count Increment", Test_Failure_Count_Increment'Access, Output, Stats);
+      Run_Test ("Success_Count Increment", Test_Success_Count_Increment'Access, Output, Stats);
+
+--   Sequence_Number_Type tests
+      Run_Test ("Sequence_Number Increment", Test_Sequence_Number_Increment'Access, Output, Stats);
+      Run_Test ("Sequence_Number Comparison", Test_Sequence_Number_Comparison'Access, Output, Stats);
+
+      Print_Test_Summary ("Counts Arithmetic Tests", Stats, Output);
+
+      return Test_Stats_Result.Ok (Stats);
+   end Run_All_Tests;
+
+end Test_Counts_Arithmetic;

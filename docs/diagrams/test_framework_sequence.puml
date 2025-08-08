@@ -1,0 +1,107 @@
+@startuml Test_Framework_Sequence
+!theme aws-orange
+title Test Framework Execution Flow\nResult-Based Testing Pattern
+
+actor Developer
+participant "Test_Runner" as TR
+participant "Test_Function" as TF
+participant "Assertions" as A
+participant "Output_Port" as OP
+participant "Statistics" as S
+
+== Test Setup ==
+Developer -> TR: Run_Test(Name, Function, Output)
+activate TR
+TR -> OP: Write_Line("Running " & Name)
+TR -> TR: Start timer
+
+== Test Execution ==
+TR -> TF: Execute test function
+activate TF
+
+TF -> A: Assert_True(condition, message)
+activate A
+alt Condition is True
+  A --> TF: Ok(True)
+else Condition is False
+  A -> A: Create Test_Error
+  A --> TF: Err(Test_Error)
+  TF --> TR: Err(Test_Error)
+  deactivate A
+  deactivate TF
+  note right: Early return on first failure
+end
+
+TF -> A: Assert_Equal(expected, actual)
+activate A
+alt Values are Equal
+  A --> TF: Ok(True)
+else Values are Different
+  A -> A: Create detailed error
+  A --> TF: Err(Test_Error)
+end
+deactivate A
+
+TF --> TR: Ok(True) or Err(Error)
+deactivate TF
+
+== Result Processing ==
+TR -> TR: Stop timer
+TR -> TR: Create Test_Result
+
+alt Test Passed
+  TR -> OP: Write_Line("[PASS] " & Name & timing)
+  TR -> S: Record_Success()
+else Test Failed
+  TR -> OP: Write_Error("[FAIL] " & Name)
+  TR -> OP: Write_Error("ERROR: " & message)
+  TR -> S: Record_Failure()
+end
+
+TR --> Developer: Test_Result
+deactivate TR
+
+== Suite Summary ==
+Developer -> TR: Run_Test_Suite(Tests, Output)
+activate TR
+
+loop For each test
+  TR -> TR: Execute test
+  TR -> S: Update statistics
+end
+
+TR -> S: Calculate_Summary()
+activate S
+S --> TR: Test_Statistics
+deactivate S
+
+TR -> OP: Print_Test_Summary(Stats)
+activate OP
+OP -> OP: Format summary table
+OP -> OP: Show pass/fail counts
+OP -> OP: Display total time
+deactivate OP
+
+TR --> Developer: Suite_Result
+deactivate TR
+
+note over A
+  **Result-Based Assertions:**
+  - No exceptions thrown
+  - Errors propagated as values
+  - Enables error accumulation
+  - Maintains test isolation
+end note
+
+note over TF
+  **Test Function Pattern:**
+  function Test_X return Void_Result.Result is
+  begin
+    -- Setup
+    -- Execute
+    -- Assert
+    return Void_Result.Ok(True);
+  end Test_X;
+end note
+
+@enduml

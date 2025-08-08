@@ -1,0 +1,292 @@
+--   =============================================================================
+--   Test_Math - Unit Tests for Math Module
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Abohlib.Core.Domain.Math; use Abohlib.Core.Domain.Math;
+with Abohlib.Core.Domain.Result;
+with Abohlib.Core.Testing;
+
+procedure Test_Math is
+
+   use Abohlib.Core.Testing;
+
+   package Test_Result is new Abohlib.Core.Domain.Result.Result_Package
+     (Ok_Type => Boolean, Err_Type => Unbounded_String);
+
+--   Test output implementation
+   type Test_Output_Port is new Output_Port_Interface with null record;
+
+   overriding procedure Log_Message
+     (Self : Test_Output_Port; Message : String) is
+   begin
+      Put_Line (Message);
+   end Log_Message;
+
+   Output : aliased Test_Output_Port;
+
+--   =========================================================================
+--   Percentage Calculation Tests
+--   =========================================================================
+
+   function Test_Calculate_Percentage_Natural
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part     : constant Natural := 75;
+      Whole    : constant Natural := 100;
+      Result   : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+      Expected : constant := 75.0;
+   begin
+      Assert (Float (Result) = Expected,
+              "Natural percentage failed: expected " & Expected'Image &
+              ", got " & Float (Result)'Image);
+      return True;
+   end Test_Calculate_Percentage_Natural;
+
+   function Test_Calculate_Percentage_Long_Long_Integer
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part     : constant Long_Long_Integer := 1_000_000_000;  -- 1 billion
+      Whole    : constant Long_Long_Integer := 4_000_000_000;  -- 4 billion
+      Result   : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+      Expected : constant := 25.0;
+   begin
+      Assert (Float (Result) = Expected,
+              "Long_Long_Integer percentage failed");
+      return True;
+   end Test_Calculate_Percentage_Long_Long_Integer;
+
+   function Test_Calculate_Percentage_Float
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part     : constant Float := 33.33;
+      Whole    : constant Float := 100.0;
+      Result   : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+      Expected : constant := 33.33;
+   begin
+      Assert (abs (Float (Result) - Expected) < 0.01,
+              "Float percentage failed");
+      return True;
+   end Test_Calculate_Percentage_Float;
+
+   function Test_Percentage_Clamping_Over_100
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part     : constant Natural := 150;
+      Whole    : constant Natural := 100;
+      Result   : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+   begin
+      Assert (Float (Result) = 100.0,
+              "Percentage > 100 should be clamped to 100");
+      return True;
+   end Test_Percentage_Clamping_Over_100;
+
+   function Test_Percentage_Zero_Part
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part     : constant Natural := 0;
+      Whole    : constant Natural := 100;
+      Result   : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+   begin
+      Assert (Float (Result) = 0.0, "Zero part should give 0%");
+      return True;
+   end Test_Percentage_Zero_Part;
+
+   function Test_Percentage_Precision
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part     : constant Natural := 1;
+      Whole    : constant Natural := 3;
+      Result   : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+--  Should be 33.33..., rounded to nearest 0.01
+      Expected : constant := 33.33;
+   begin
+      Assert (abs (Float (Result) - Expected) < 0.01,
+              "Percentage precision test failed");
+      return True;
+   end Test_Percentage_Precision;
+
+--   =========================================================================
+--   Ratio Tests
+--   =========================================================================
+
+   function Test_Calculate_Ratio
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Numerator   : constant Natural := 3;
+      Denominator : constant Natural := 4;
+      Result      : constant Ratio_Type := Calculate_Ratio (Numerator, Denominator);
+      Expected    : constant := 0.75;
+   begin
+      Assert (Float (Result) = Expected,
+              "Ratio calculation failed: expected " & Expected'Image &
+              ", got " & Float (Result)'Image);
+      return True;
+   end Test_Calculate_Ratio;
+
+   function Test_Percentage_To_Ratio
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Percentage : constant Percentage_Type := 75.0;
+      Result     : constant Ratio_Type := Percentage_To_Ratio (Percentage);
+      Expected   : constant := 0.75;
+   begin
+      Assert (Float (Result) = Expected,
+              "Percentage to ratio conversion failed");
+      return True;
+   end Test_Percentage_To_Ratio;
+
+   function Test_Ratio_To_Percentage
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Ratio    : constant Ratio_Type := 0.25;
+      Result   : constant Percentage_Type := Ratio_To_Percentage (Ratio);
+      Expected : constant := 25.0;
+   begin
+      Assert (Float (Result) = Expected,
+              "Ratio to percentage conversion failed");
+      return True;
+   end Test_Ratio_To_Percentage;
+
+   function Test_Ratio_To_Percentage_Over_100_Percent
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Ratio    : constant Ratio_Type := 1.5;  -- 150%
+      Result   : constant Percentage_Type := Ratio_To_Percentage (Ratio);
+      Expected : constant := 100.0;  -- Should be clamped
+   begin
+      Assert (Float (Result) = Expected,
+              "Ratio > 1.0 should clamp to 100%");
+      return True;
+   end Test_Ratio_To_Percentage_Over_100_Percent;
+
+--   =========================================================================
+--   Utility Function Tests
+--   =========================================================================
+
+   function Test_Clamp_Float
+     (Output : access Test_Output_Port'Class) return Boolean is
+      function Clamp_Float is new Clamp (Float);
+
+--  Test clamping below min
+      Value1 : constant Float := -5.0;
+      Result1 : constant Float := Clamp_Float (Value1, 0.0, 10.0);
+
+--  Test clamping above max
+      Value2 : constant Float := 15.0;
+      Result2 : constant Float := Clamp_Float (Value2, 0.0, 10.0);
+
+--  Test value within range
+      Value3 : constant Float := 5.0;
+      Result3 : constant Float := Clamp_Float (Value3, 0.0, 10.0);
+   begin
+      Assert (Result1 = 0.0, "Clamp below min failed");
+      Assert (Result2 = 10.0, "Clamp above max failed");
+      Assert (Result3 = 5.0, "Clamp within range failed");
+      return True;
+   end Test_Clamp_Float;
+
+   function Test_Approximately_Equal
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Value1 : constant Float := 1.0000;
+      Value2 : constant Float := 1.0001;
+      Value3 : constant Float := 1.1;
+   begin
+      Assert (Approximately_Equal (Value1, Value2),
+              "Values within epsilon should be equal");
+      Assert (not Approximately_Equal (Value1, Value3),
+              "Values outside epsilon should not be equal");
+      Assert (Approximately_Equal (Value1, Value3, 0.2),
+              "Values within larger epsilon should be equal");
+      return True;
+   end Test_Approximately_Equal;
+
+--   =========================================================================
+--   Edge Case Tests
+--   =========================================================================
+
+   function Test_Very_Large_Numbers
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part  : constant Long_Long_Integer := Long_Long_Integer'Last / 2;
+      Whole : constant Long_Long_Integer := Long_Long_Integer'Last;
+      Result : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+--  Should be approximately 50%
+   begin
+      Assert (abs (Float (Result) - 50.0) < 1.0,
+              "Very large number percentage failed");
+      return True;
+   end Test_Very_Large_Numbers;
+
+   function Test_Very_Small_Percentage
+     (Output : access Test_Output_Port'Class) return Boolean is
+      Part  : constant Natural := 1;
+      Whole : constant Natural := 10_000;
+      Result : constant Percentage_Type := Calculate_Percentage (Part, Whole);
+      Expected : constant := 0.01;  -- Minimum precision of Percentage_Type
+   begin
+      Assert (Float (Result) = Expected,
+              "Very small percentage failed");
+      return True;
+   end Test_Very_Small_Percentage;
+
+--   =========================================================================
+--   Boundary Tests
+--   =========================================================================
+
+   function Test_Percentage_Boundaries
+     (Output : access Test_Output_Port'Class) return Boolean is
+--  Test 0%
+      Zero_Result : constant Percentage_Type :=
+         Calculate_Percentage (0, 100);
+
+--  Test 100%
+      Full_Result : constant Percentage_Type :=
+         Calculate_Percentage (100, 100);
+
+--  Test just below 100%
+      Almost_Full : constant Percentage_Type :=
+         Calculate_Percentage (9999, 10000);
+   begin
+      Assert (Float (Zero_Result) = 0.0, "0% boundary failed");
+      Assert (Float (Full_Result) = 100.0, "100% boundary failed");
+      Assert (Float (Almost_Full) = 99.99, "99.99% boundary failed");
+      return True;
+   end Test_Percentage_Boundaries;
+
+--   Test suite
+   Suite : constant Test_Suite := Create_Suite ("Math Module");
+
+begin
+--  Percentage calculation tests
+   Add_Test (Suite, "Calculate_Percentage with Natural",
+             Test_Calculate_Percentage_Natural'Access);
+   Add_Test (Suite, "Calculate_Percentage with Long_Long_Integer",
+             Test_Calculate_Percentage_Long_Long_Integer'Access);
+   Add_Test (Suite, "Calculate_Percentage with Float",
+             Test_Calculate_Percentage_Float'Access);
+   Add_Test (Suite, "Percentage clamping over 100%",
+             Test_Percentage_Clamping_Over_100'Access);
+   Add_Test (Suite, "Percentage with zero part",
+             Test_Percentage_Zero_Part'Access);
+   Add_Test (Suite, "Percentage precision",
+             Test_Percentage_Precision'Access);
+
+--  Ratio tests
+   Add_Test (Suite, "Calculate_Ratio", Test_Calculate_Ratio'Access);
+   Add_Test (Suite, "Percentage_To_Ratio conversion",
+             Test_Percentage_To_Ratio'Access);
+   Add_Test (Suite, "Ratio_To_Percentage conversion",
+             Test_Ratio_To_Percentage'Access);
+   Add_Test (Suite, "Ratio_To_Percentage over 100%",
+             Test_Ratio_To_Percentage_Over_100_Percent'Access);
+
+--  Utility function tests
+   Add_Test (Suite, "Clamp function", Test_Clamp_Float'Access);
+   Add_Test (Suite, "Approximately_Equal function",
+             Test_Approximately_Equal'Access);
+
+--  Edge case tests
+   Add_Test (Suite, "Very large numbers", Test_Very_Large_Numbers'Access);
+   Add_Test (Suite, "Very small percentage", Test_Very_Small_Percentage'Access);
+
+--  Boundary tests
+   Add_Test (Suite, "Percentage boundaries", Test_Percentage_Boundaries'Access);
+
+--  Run tests
+   Run_Suite (Suite, Output'Access);
+end Test_Math;

@@ -1,0 +1,152 @@
+--   =============================================================================
+--   Test_Bytes_Conversion_Limits - Test conversion function limits
+--   =============================================================================
+--   Tests that verify From_KB, From_MB, and From_GB properly enforce their
+--   precondition limits to prevent overflow.
+
+pragma Ada_2022;
+pragma Warnings (Off, "subprogram body has no previous spec");
+
+with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Assertions; use Ada.Assertions;
+with Abohlib.Core.Domain.Types.Bytes; use Abohlib.Core.Domain.Types.Bytes;
+
+procedure Test_Bytes_Conversion_Limits is
+
+   procedure Test_From_KB_Limits is
+      Max_Valid_KB : constant Long_Long_Integer := Long_Long_Integer'Last / 1_000;
+      Result : SI_Bytes_Type;
+   begin
+      Put_Line ("Testing From_KB limits...");
+
+--  Test maximum valid value
+      Result := From_KB (Max_Valid_KB);
+      Assert (Result > 0, "From_KB max valid value should produce positive result");
+      Put_Line ("  ✓ From_KB (" & Max_Valid_KB'Image & ") succeeded");
+
+--  Test overflow detection
+      begin
+         Result := From_KB (Max_Valid_KB + 1);
+         Assert (False, "From_KB should have raised assertion error");
+      exception
+         when Assertion_Error =>
+            Put_Line ("  ✓ From_KB overflow correctly raised assertion error");
+      end;
+   end Test_From_KB_Limits;
+
+   procedure Test_From_MB_Limits is
+      Max_Valid_MB : constant Long_Long_Integer := Long_Long_Integer'Last / 1_000_000;
+      Result : SI_Bytes_Type;
+   begin
+      Put_Line ("Testing From_MB limits...");
+
+--  Test maximum valid value
+      Result := From_MB (Max_Valid_MB);
+      Assert (Result > 0, "From_MB max valid value should produce positive result");
+      Put_Line ("  ✓ From_MB (" & Max_Valid_MB'Image & ") succeeded");
+
+--  Test overflow detection
+      begin
+         Result := From_MB (Max_Valid_MB + 1);
+         Assert (False, "From_MB should have raised assertion error");
+      exception
+         when Assertion_Error =>
+            Put_Line ("  ✓ From_MB overflow correctly raised assertion error");
+      end;
+   end Test_From_MB_Limits;
+
+   procedure Test_From_GB_Limits is
+      Max_Valid_GB : constant Long_Long_Integer := Long_Long_Integer'Last / 1_000_000_000;
+      Result : SI_Bytes_Type;
+   begin
+      Put_Line ("Testing From_GB limits...");
+
+--  Test maximum valid value
+      Result := From_GB (Max_Valid_GB);
+      Assert (Result > 0, "From_GB max valid value should produce positive result");
+      Put_Line ("  ✓ From_GB (" & Max_Valid_GB'Image & ") succeeded");
+
+--  Test overflow detection
+      begin
+         Result := From_GB (Max_Valid_GB + 1);
+         Assert (False, "From_GB should have raised assertion error");
+      exception
+         when Assertion_Error =>
+            Put_Line ("  ✓ From_GB overflow correctly raised assertion error");
+      end;
+   end Test_From_GB_Limits;
+
+   procedure Test_Negative_Values is
+      Result : SI_Bytes_Type;
+   begin
+      Put_Line ("Testing negative value rejection...");
+
+--  Test From_KB with negative
+      begin
+         Result := From_KB (-1);
+         Assert (False, "From_KB should reject negative values");
+      exception
+         when Assertion_Error =>
+            Put_Line ("  ✓ From_KB (-1) correctly raised assertion error");
+      end;
+
+--  Test From_MB with negative
+      begin
+         Result := From_MB (-1);
+         Assert (False, "From_MB should reject negative values");
+      exception
+         when Assertion_Error =>
+            Put_Line ("  ✓ From_MB (-1) correctly raised assertion error");
+      end;
+
+--  Test From_GB with negative
+      begin
+         Result := From_GB (-1);
+         Assert (False, "From_GB should reject negative values");
+      exception
+         when Assertion_Error =>
+            Put_Line ("  ✓ From_GB (-1) correctly raised assertion error");
+      end;
+   end Test_Negative_Values;
+
+   procedure Test_Common_Values is
+   begin
+      Put_Line ("Testing common valid values...");
+
+--  Test some common file sizes
+      Assert (From_GB (2) = SI_Bytes_Type (2_000_000_000),
+              "From_GB (2) should equal 2 billion bytes");
+      Put_Line ("  ✓ From_GB (2) = 2,000,000,000 bytes (2 GB)");
+
+      Assert (From_GB (1000) = SI_Bytes_Type (1_000_000_000_000),
+              "From_GB (1000) should equal 1 trillion bytes");
+      Put_Line ("  ✓ From_GB (1000) = 1,000,000,000,000 bytes (1 TB)");
+
+      Assert (From_GB (5000) = SI_Bytes_Type (5_000_000_000_000),
+              "From_GB (5000) should equal 5 trillion bytes");
+      Put_Line ("  ✓ From_GB (5000) = 5,000,000,000,000 bytes (5 TB)");
+   end Test_Common_Values;
+
+begin
+   Put_Line ("=== Bytes Conversion Limits Test Suite ===");
+   New_Line;
+
+   Test_From_KB_Limits;
+   New_Line;
+
+   Test_From_MB_Limits;
+   New_Line;
+
+   Test_From_GB_Limits;
+   New_Line;
+
+   Test_Negative_Values;
+   New_Line;
+
+   Test_Common_Values;
+   New_Line;
+
+   Put_Line ("=== All tests passed! ===");
+end Test_Bytes_Conversion_Limits;
+
+pragma Warnings (On, "subprogram body has no previous spec");

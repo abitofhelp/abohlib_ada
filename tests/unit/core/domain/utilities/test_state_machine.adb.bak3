@@ -1,0 +1,324 @@
+--   =============================================================================
+--   Test_State_Machine - Unit tests for generic state machine
+--   Copyright (c) 2025 A Bit of Help, Inc.
+--   SPDX-License-Identifier: MIT
+--   =============================================================================
+
+pragma Ada_2022;
+
+with Ada.Text_IO; use Ada.Text_IO;
+with Abohlib.Infrastructure.Testing.Test_Framework; use Abohlib.Infrastructure.Testing.Test_Framework;
+with Abohlib.Core.Domain.Utilities.State_Machine;
+with Abohlib.Core.Domain.Utilities.Concurrent.Buffer_State_Machine;
+
+package body Test_State_Machine is
+
+--   ==========================================================================
+--   Test State Machine Setup
+--   ==========================================================================
+
+--   Simple state type for testing
+   type Test_State is (Initial, Running, Paused, Stopped);
+
+--   Simple context
+   type Test_Context is record
+      Value : Natural := 0;
+   end record;
+
+--   Instantiate state machine
+   package Test_SM is new Abohlib.Core.Domain.Utilities.State_Machine
+     (State_Type   => Test_State,
+      Context_Type => Test_Context);
+
+   use Test_SM;
+
+--   Test validator that only allows certain transitions
+   function Test_Validator
+     (From_State : Test_State;
+      To_State   : Test_State;
+      Context    : Test_Context) return Boolean
+   is
+   begin
+      case From_State is
+         when Initial =>
+            return To_State = Running;
+         when Running =>
+            return To_State in Paused | Stopped;
+         when Paused =>
+            return To_State in Running | Stopped;
+         when Stopped =>
+            return False;  -- Terminal state
+      end case;
+   end Test_Validator;
+
+--   ==========================================================================
+--   Basic State Machine Tests
+--   ==========================================================================
+
+   procedure Test_Create_State_Machine is
+      Machine : State_Machine_Type := Create (Initial);
+   begin
+      Test_Start ("Test_Create_State_Machine");
+
+      Assert (Machine.Get_Current_State = Initial,
+              "Machine should start in Initial state");
+
+      Test_Pass;
+   end Test_Create_State_Machine;
+
+   procedure Test_Valid_Transition is
+      Machine : State_Machine_Type := Create (Initial);
+      Context : constant Test_Context := (Value => 42);
+      Result  : Transition_Result.Result;
+   begin
+      Test_Start ("Test_Valid_Transition");
+
+--   Transition from Initial to Running
+      Result := Machine.Transition_To (Running, Context, Test_Validator'Access);
+
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition from Initial to Running should succeed");
+      Assert (Machine.Get_Current_State = Running,
+              "Machine should be in Running state");
+
+      Test_Pass;
+   end Test_Valid_Transition;
+
+   procedure Test_Invalid_Transition is
+      Machine : State_Machine_Type := Create (Initial);
+      Context : constant Test_Context := (Value => 42);
+      Result  : Transition_Result.Result;
+   begin
+      Test_Start ("Test_Invalid_Transition");
+
+--   Try invalid transition from Initial to Stopped
+      Result := Machine.Transition_To (Stopped, Context, Test_Validator'Access);
+
+      Assert (Transition_Result.Is_Err (Result),
+              "Transition from Initial to Stopped should fail");
+      Assert (Machine.Get_Current_State = Initial,
+              "Machine should remain in Initial state");
+
+      Test_Pass;
+   end Test_Invalid_Transition;
+
+   procedure Test_History_Tracking is
+      Machine : State_Machine_Type := Create (Initial);
+      Context : constant Test_Context := (Value => 0);
+      Result  : Transition_Result.Result;
+      History : State_Array (1 .. 10);
+   begin
+      Test_Start ("Test_History_Tracking");
+
+--   Make several transitions
+      Result := Machine.Transition_To (Running, Context, Test_Validator'Access);
+      Result := Machine.Transition_To (Paused, Context, Test_Validator'Access);
+      Result := Machine.Transition_To (Running, Context, Test_Validator'Access);
+
+--   Get history
+      History := Machine.Get_History (4);
+
+      Assert (History'Length = 4,
+              "History should contain 4 states");
+      Assert (History (1) = Initial and
+              History (2) = Running and
+              History (3) = Paused and
+              History (4) = Running,
+              "History should match transition sequence");
+
+      Test_Pass;
+   end Test_History_Tracking;
+
+   procedure Test_Reset is
+      Machine : State_Machine_Type := Create (Initial);
+      Context : constant Test_Context := (Value => 0);
+      Result  : Transition_Result.Result;
+   begin
+      Test_Start ("Test_Reset");
+
+--   Make transitions
+      Result := Machine.Transition_To (Running, Context, Test_Validator'Access);
+      Result := Machine.Transition_To (Paused, Context, Test_Validator'Access);
+
+      Assert (Machine.Get_Current_State = Paused,
+              "Machine should be in Paused state");
+
+--   Reset
+      Machine.Reset;
+
+      Assert (Machine.Get_Current_State = Initial,
+              "Machine should be reset to Initial state");
+
+      Test_Pass;
+   end Test_Reset;
+
+   procedure Test_Statistics is
+      Machine : State_Machine_Type := Create (Initial);
+      Context : constant Test_Context := (Value => 0);
+      Result  : Transition_Result.Result;
+      Stats   : State_Statistics;
+   begin
+      Test_Start ("Test_Statistics");
+
+--   Make successful and failed transitions
+      Result := Machine.Transition_To (Running, Context, Test_Validator'Access);
+      Result := Machine.Transition_To (Stopped, Context, Test_Validator'Access);  -- Invalid
+      Result := Machine.Transition_To (Paused, Context, Test_Validator'Access);
+
+      Stats := Machine.Get_Statistics;
+
+      Assert (Stats.Total_Transitions = 3,
+              "Should have 3 total transitions (including creation)");
+      Assert (Stats.Failed_Transitions = 1,
+              "Should have 1 failed transition");
+      Assert (Stats.Current_State = Paused,
+              "Current state should be Paused");
+
+      Test_Pass;
+   end Test_Statistics;
+
+--   ==========================================================================
+--   Buffer State Machine Tests
+--   ==========================================================================
+
+   procedure Test_Buffer_State_Machine is
+      use Abohlib.Core.Domain.Utilities.Concurrent.Buffer_State_Machine;
+      use Buffer_SM;
+
+      Machine : State_Machine_Type := Create_Buffer_State_Machine;
+      Context : Buffer_Context := (Buffer_Index => 0, Buffer_Size => 1024, others => <>);
+      Result  : Transition_Result.Result;
+   begin
+      Test_Start ("Test_Buffer_State_Machine");
+
+--   Test producer workflow: Free -> Reading -> Ready
+      Assert (Machine.Get_Current_State = Free,
+              "Buffer should start in Free state");
+
+      Result := Machine.Transition_To (Reading, Context, Validate_Producer_Transition'Access);
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition Free -> Reading should succeed");
+
+      Result := Machine.Transition_To (Ready, Context, Validate_Producer_Transition'Access);
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition Reading -> Ready should succeed");
+
+--   Test consumer workflow: Ready -> Consuming -> Free
+      Result := Machine.Transition_To (Consuming, Context, Validate_Consumer_Transition'Access);
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition Ready -> Consuming should succeed");
+
+      Result := Machine.Transition_To (Free, Context, Validate_Consumer_Transition'Access);
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition Consuming -> Free should succeed");
+
+      Test_Pass;
+   end Test_Buffer_State_Machine;
+
+   procedure Test_Buffer_Invalid_Transitions is
+      use Abohlib.Core.Domain.Utilities.Concurrent.Buffer_State_Machine;
+      use Buffer_SM;
+
+      Machine : State_Machine_Type := Create_Buffer_State_Machine;
+      Context : Buffer_Context := (Buffer_Index => 0, Buffer_Size => 1024, others => <>);
+      Result  : Transition_Result.Result;
+   begin
+      Test_Start ("Test_Buffer_Invalid_Transitions");
+
+--   Try invalid transition: Free -> Consuming
+      Result := Machine.Transition_To (Consuming, Context, Validate_Any_Transition'Access);
+      Assert (Transition_Result.Is_Err (Result),
+              "Transition Free -> Consuming should fail");
+
+--   Get to Ready state
+      Result := Machine.Transition_To (Reading, Context, Validate_Producer_Transition'Access);
+      Result := Machine.Transition_To (Ready, Context, Validate_Producer_Transition'Access);
+
+--   Try invalid transition: Ready -> Free (must go through Consuming)
+      Result := Machine.Transition_To (Free, Context, Validate_Any_Transition'Access);
+      Assert (Transition_Result.Is_Err (Result),
+              "Transition Ready -> Free should fail");
+
+      Test_Pass;
+   end Test_Buffer_Invalid_Transitions;
+
+   procedure Test_Buffer_Error_Recovery is
+      use Abohlib.Core.Domain.Utilities.Concurrent.Buffer_State_Machine;
+      use Buffer_SM;
+
+      Machine : State_Machine_Type := Create_Buffer_State_Machine;
+      Context : Buffer_Context := (Buffer_Index => 0, Buffer_Size => 1024, others => <>);
+      Result  : Transition_Result.Result;
+   begin
+      Test_Start ("Test_Buffer_Error_Recovery");
+
+--   Get to Reading state
+      Result := Machine.Transition_To (Reading, Context, Validate_Producer_Transition'Access);
+
+--   Transition to Error state
+      Result := Machine.Transition_To (Error, Context, Validate_Producer_Transition'Access);
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition Reading -> Error should succeed");
+
+--   Recover from Error to Free
+      Result := Machine.Transition_To (Free, Context, Validate_Consumer_Transition'Access);
+      Assert (Transition_Result.Is_Ok (Result),
+              "Transition Error -> Free should succeed");
+
+      Test_Pass;
+   end Test_Buffer_Error_Recovery;
+
+   procedure Test_Allowed_Next_States is
+      use Abohlib.Core.Domain.Utilities.Concurrent.Buffer_State_Machine;
+
+      Allowed : Buffer_SM.State_Array (1 .. 5);
+   begin
+      Test_Start ("Test_Allowed_Next_States");
+
+--   From Free state
+      Allowed := Get_Allowed_Next_States (Free);
+      Assert (Allowed'Length = 1 and then Allowed (1) = Reading,
+              "From Free, only Reading is allowed");
+
+--   From Reading state
+      Allowed := Get_Allowed_Next_States (Reading);
+      Assert (Allowed'Length = 3,
+              "From Reading, 3 transitions are allowed");
+
+--   From Ready state
+      Allowed := Get_Allowed_Next_States (Ready);
+      Assert (Allowed'Length = 1 and then Allowed (1) = Consuming,
+              "From Ready, only Consuming is allowed");
+
+      Test_Pass;
+   end Test_Allowed_Next_States;
+
+--   Main test runner function
+   function Run_All_Tests
+     (Output : access Test_Output_Port'Class) return Test_Stats_Result.Result
+   is
+      Stats : Test_Statistics;
+   begin
+--   Basic state machine tests
+      Run_Test_Suite ("Generic State Machine Tests", Stats);
+      Test_Create_State_Machine;
+      Test_Valid_Transition;
+      Test_Invalid_Transition;
+      Test_History_Tracking;
+      Test_Reset;
+      Test_Statistics;
+
+--   Buffer state machine tests
+      Run_Test_Suite ("Buffer State Machine Tests", Stats);
+      Test_Buffer_State_Machine;
+      Test_Buffer_Invalid_Transitions;
+      Test_Buffer_Error_Recovery;
+      Test_Allowed_Next_States;
+
+--   Print summary
+      Print_Test_Summary (Stats);
+
+      return Test_Stats_Result.Create_Ok (Stats);
+   end Run_All_Tests;
+
+end Test_State_Machine;

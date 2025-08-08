@@ -1,0 +1,174 @@
+@startuml Saga_Pattern_State
+!theme aws-orange
+title Saga Pattern State Diagram - Distributed Transaction Management
+
+state "Saga Lifecycle" as saga {
+
+  [*] --> Created : Create Saga Instance
+
+  Created --> Running : Start Execution
+  Created --> Aborted : Cancel Before Start
+
+  state Running {
+    [*] --> ExecutingStep1
+
+    ExecutingStep1 --> ExecutingStep2 : Step 1 Success
+    ExecutingStep1 --> Compensating : Step 1 Failed
+
+    ExecutingStep2 --> ExecutingStep3 : Step 2 Success
+    ExecutingStep2 --> Compensating : Step 2 Failed
+
+    ExecutingStep3 --> ExecutingStepN : Step 3 Success
+    ExecutingStep3 --> Compensating : Step 3 Failed
+
+    ExecutingStepN --> Completed : Final Step Success
+    ExecutingStepN --> Compensating : Final Step Failed
+
+    state ExecutingStep1 {
+      [*] --> ValidatingInput
+      ValidatingInput --> InvokingService : Input Valid
+      ValidatingInput --> StepFailed : Input Invalid
+      InvokingService --> CheckingResult : Service Called
+      CheckingResult --> StepCompleted : Success
+      CheckingResult --> RetryingStep : Retriable Failure
+      CheckingResult --> StepFailed : Non-retriable Failure
+      RetryingStep --> InvokingService : Retry Available
+      RetryingStep --> StepFailed : Max Retries Exceeded
+    }
+
+    state ExecutingStep2 {
+      [*] --> ValidatingInput2
+      ValidatingInput2 --> InvokingService2 : Input Valid
+      InvokingService2 --> StepCompleted2 : Success
+      InvokingService2 --> StepFailed2 : Failure
+    }
+
+    state ExecutingStep3 {
+      [*] --> ValidatingInput3
+      ValidatingInput3 --> InvokingService3 : Input Valid
+      InvokingService3 --> StepCompleted3 : Success
+      InvokingService3 --> StepFailed3 : Failure
+    }
+
+    state ExecutingStepN {
+      [*] --> ValidatingInputN
+      ValidatingInputN --> InvokingServiceN : Input Valid
+      InvokingServiceN --> StepCompletedN : Success
+      InvokingServiceN --> StepFailedN : Failure
+    }
+  }
+
+  state Compensating {
+    [*] --> CompensatingStepN
+
+    CompensatingStepN --> CompensatingStep3 : Step N Compensated
+    CompensatingStepN --> Failed : Compensation Failed
+
+    CompensatingStep3 --> CompensatingStep2 : Step 3 Compensated
+    CompensatingStep3 --> Failed : Compensation Failed
+
+    CompensatingStep2 --> CompensatingStep1 : Step 2 Compensated
+    CompensatingStep2 --> Failed : Compensation Failed
+
+    CompensatingStep1 --> Failed : All Compensations Complete
+    CompensatingStep1 --> Failed : Compensation Failed
+
+    state CompensatingStepN {
+      [*] --> ReversingStepN
+      ReversingStepN --> CompensationCompleteN : Success
+      ReversingStepN --> RetryingCompensationN : Retriable Failure
+      ReversingStepN --> CompensationFailedN : Non-retriable Failure
+      RetryingCompensationN --> ReversingStepN : Retry Available
+      RetryingCompensationN --> CompensationFailedN : Max Retries Exceeded
+    }
+  }
+
+  Running --> Completed : All Steps Successful
+  Running --> Compensating : Any Step Failed
+
+  Compensating --> Failed : Compensation Complete
+
+  Completed --> [*]
+  Failed --> [*]
+  Aborted --> [*]
+}
+
+state "Step State Details" as step_states {
+  state "Individual Step Lifecycle" as step {
+    [*] --> Pending
+
+    Pending --> Executing : Begin Step Execution
+
+    state Executing {
+      [*] --> Validating
+      Validating --> Processing : Validation Passed
+      Validating --> ExecutionFailed : Validation Failed
+      Processing --> ExecutionCompleted : Processing Successful
+      Processing --> Retrying : Retriable Error
+      Processing --> ExecutionFailed : Non-retriable Error
+      Retrying --> Processing : Retry Attempt
+      Retrying --> ExecutionFailed : Max Retries Exceeded
+    }
+
+    Executing --> Completed : Execution Successful
+    Executing --> Failed : Execution Failed
+
+    Completed --> Compensating : Saga Compensation Triggered
+    Failed --> Compensating : Saga Compensation Triggered
+
+    state Compensating {
+      [*] --> ReversingActions
+      ReversingActions --> CompensationCompleted : Reversal Successful
+      ReversingActions --> RetryingCompensation : Retriable Error
+      ReversingActions --> CompensationFailed : Non-retriable Error
+      RetryingCompensation --> ReversingActions : Retry Attempt
+      RetryingCompensation --> CompensationFailed : Max Retries Exceeded
+    }
+
+    Compensating --> Compensated : Compensation Successful
+    Compensating --> CompensationFailed : Compensation Failed
+
+    Compensated --> [*]
+    CompensationFailed --> [*]
+  }
+}
+
+note top of saga
+**SAGA COORDINATOR FEATURES:**
+- Orchestrates distributed transactions
+- Handles step-by-step execution
+- Automatic compensation on failure
+- Retry logic for transient failures
+- Event-driven progress tracking
+- Timeout handling
+- Nested saga support
+end note
+
+note right of Compensating
+**COMPENSATION LOGIC:**
+Steps are compensated in
+reverse order (LIFO).
+Each step must implement
+both Execute() and
+Compensate() operations.
+end note
+
+note bottom of step_states
+**STEP EXECUTION PATTERNS:**
+- **Execute**: Forward operation
+- **Compensate**: Rollback operation
+- **Retry**: For transient failures
+- **Timeout**: Prevent hanging
+- **Idempotent**: Safe to retry
+end note
+
+note left of Running
+**EXECUTION FLOW:**
+1. Validate step input
+2. Execute business operation
+3. Check result
+4. Retry if retriable failure
+5. Proceed to next step or compensate
+end note
+
+@enduml

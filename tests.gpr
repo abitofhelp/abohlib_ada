@@ -1,0 +1,32 @@
+--  =============================================================================
+--  Abohlib Tests Project File (No Style Checks)
+--  Copyright (c) 2025 A Bit of Help, Inc.
+--  SPDX-License-Identifier: MIT
+--  =============================================================================
+
+with "config/abohlib_config.gpr";
+with "abohlib.gpr";
+
+project Tests is
+
+   for Source_Dirs use ("tests/**");
+   for Object_Dir use "obj/tests";
+   for Exec_Dir use "bin";
+   for Main use ("test_all.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        Abohlib_Config.Ada_Compiler_Switches &
+        ("-gnat2022", "-gnatyM120", "-gnaty3", "-gnatwa", 
+         "-gnatyk", "-gnatyl", "-gnatyn", "-gnatyp", "-gnatyr", "-gnatyt",
+         "-gnatyu", "-gnatyx");
+      -- Note: -gnatys (require separate specs) is intentionally omitted
+   end Compiler;
+   
+   package Binder renames Abohlib.Binder;
+
+   package Builder is
+      for Default_Switches ("Ada") use ("-j0", "-g");
+   end Builder;
+
+end Tests;
